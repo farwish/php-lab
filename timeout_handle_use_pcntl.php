@@ -1,6 +1,6 @@
 <?php
 /*----------------------------------
- | Cli Tasker 
+ | Cli Tasker (not support web env)
  | @farwish MIT License
  |----------------------------------
  */
@@ -35,9 +35,8 @@ class Tasker
 	public function handle($callback = '')
 	{
 		pcntl_signal(SIGALRM, ($callback ? $callback() : function() {
-			echo "超时!";
-		}) );
-		die;
+			echo "超时!";die;
+		}));
 	}
 }
 
