@@ -1,6 +1,7 @@
 <?php
 /*----------------------------------
- | Cli Tasker (not support web env)
+ | Cli Tasker
+ | ( not support web env: http://php.net/manual/en/intro.pcntl.php )
  | @farwish MIT License
  |----------------------------------
  */
