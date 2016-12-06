@@ -8,8 +8,9 @@
  * 3. 配置 php.ini 加入以下部分，并重启 php-fpm:
  *      auto_prepend_file=/home/www/Xhprof.php
  *
- *    ( 如果不改php.ini，可以改nginx配置，在访问php的区间段加入： )
+ *    ( 可以不修改php.ini，而是在具体应用的 nginx 配置中，访问php的区间段加入： )
  *    ( fastcgi_param PHP_VALUE "auto_prepend_file=/home/www/Xhprof.php"; )
+ *    ( 这种方式更优一点，主要是不用影响整个php的行为. )
  *
  * 4. 修改程序 configure 部分，一般情况需要改 $xhprof_lib_path 和 $supervise['urls']；
  * 5. 访问你的任何web应用.
