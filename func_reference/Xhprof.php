@@ -6,9 +6,11 @@
  * 1. 装好 xhprof (pecl install xhprof-0.9.2)，php.ini 加入 extension=xhprof.so 
  * 2. 把 本文件、xhprof源代码中xhprof_html目录、xhprof_lib目录，三者放在web可访问根目录.
  * 3. 配置 php.ini 加入以下部分，并重启 php-fpm:
- *      auto_prepend_file=/home/www/Xhprof.php
+ *      ; fix nginx notice.
+ *      xhprof.output_dir=/tmp
+ *      ;auto_prepend_file=/home/www/Xhprof.php
  *
- *    ( 可以不修改php.ini，而是在具体应用的 nginx 配置中，访问php的区间段加入： )
+ *    ( 可以不加auto_prepend_file，而是在具体应用的 nginx 配置中，访问php的区间段加入： )
  *    ( fastcgi_param PHP_VALUE "auto_prepend_file=/home/www/Xhprof.php"; )
  *    ( 这种方式更优一点，主要是不用影响整个php的行为. )
  *
