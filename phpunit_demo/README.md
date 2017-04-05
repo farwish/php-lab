@@ -30,3 +30,33 @@ ErrorSuppressionTest.php
 OutputTest.php  
 > expectedOutputString()
 
+UselessTest.php  
+
+IncompleteTest.php  
+> markTestIncomplete()  
+
+SkippedTest.php  
+> markTestSkipped()  
+> @requires  
+
+StackFixtureTest.php  
+> setUp()  
+
+TemplateMethodsTest.php  
+> setUpBeforeClass()  
+> setUp()  
+> assertPreConditions()  
+> ...  
+> assertPostConditions()  
+> tearDown()  
+> setUp()  
+> assertPreConditions()  
+> ...  
+> tearDown()  
+> onNotSuccessfulTest()  
+
+DatabaseTest.php  
+> setUpBeforeClass()  
+> tearDownAfterClass()  
+
+
