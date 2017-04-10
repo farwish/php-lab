@@ -2,3 +2,4 @@ a.php
 b.php
 *.swp
 tmp.log
+**dbunit.phar

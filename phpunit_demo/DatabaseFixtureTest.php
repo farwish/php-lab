@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
  * fixtures: 共享基境.
  *
  */
-class DatabaseTest extends TestCase
+class DatabaseFixtureTest extends TestCase
 {
     protected static $dbh;
 

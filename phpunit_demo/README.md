@@ -55,8 +55,18 @@ TemplateMethodsTest.php
 > tearDown()  
 > onNotSuccessfulTest()  
 
-DatabaseTest.php  
+DatabaseFixtureTest.php  
 > setUpBeforeClass()  
 > tearDownAfterClass()  
+
+MyDatabaseTestCase.php  
+
+CompositeDataSetTest.php  
+
+MySqlDataSetTest.php  
+> getConnection()  
+> getDataSet()  
+> getRowCount()  
+
 
 
