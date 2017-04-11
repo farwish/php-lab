@@ -68,5 +68,38 @@ MySqlDataSetTest.php
 > getDataSet()  
 > getRowCount()  
 
+StubReturnValueTest.php  
+> createMock()  
+> method()  
+> will()  
+> returnValue()  
+
+StubReturnArgumentTest.php  
+> createMock()  
+> method()  
+> will()  
+> returnArgument()  
+
+StubReturnSelfTest.php  
+> createMock()  
+> method()  
+> will()  
+> returnSelf()  
+> assertSame()  
+
+StubReturnCallbackTest.php  
+> createMock()  
+> method()  
+> will()  
+> returnCallback()  
+
+StubOnConsecutiveCallsTest.php  
+> createMock()  
+> method()  
+> will()  
+> onConsecutiveCalls()  
+
+StubThrowExceptionTest.php  
+
 
 
