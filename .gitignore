@@ -3,3 +3,5 @@ b.php
 *.swp
 tmp.log
 **dbunit.phar
+/vendor/
+composer.lock

@@ -1,0 +1,17 @@
+{
+    "name": "farwish/php-lab",
+    "description": "php lab",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "farwish",
+            "email": "farwish@foxmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "sentry/sentry": "^1.6",
+        "farwish/alcon": "dev-master"
+    }
+}
