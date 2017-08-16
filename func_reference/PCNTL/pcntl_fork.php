@@ -26,5 +26,6 @@ if ($pid == -1) {
 	// 子进程执行线程内返回0
 	// child process
 	each_echo("child");
+    die;
 }
 
