@@ -12,6 +12,7 @@
     "minimum-stability": "dev",
     "require": {
         "sentry/sentry": "^1.6",
-        "farwish/alcon": "dev-master"
+        "farwish/alcon": "dev-master",
+        "workerman/workerman": "~3.5.0"
     }
 }

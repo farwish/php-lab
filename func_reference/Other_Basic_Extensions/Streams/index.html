@@ -1,54 +1,45 @@
-<!DOCTYPE HTML>
-<html>
-   <head>
-   <meta charset="utf-8">
-   <title>TestWebsocket</title>
-    
-      <script type="text/javascript">
-         function WebSocketTest()
-         {
-            if ("WebSocket" in window)
-            {
-               alert("您的浏览器支持 WebSocket!");
-               
-               // 打开一个 web socket
-               var ws = new WebSocket("ws://127.0.0.1:1113");
-                
-               ws.onopen = function()
-               {
-                  // Web Socket 已连接上，使用 send() 方法发送数据
-                  ws.send("发送数据");
-                  alert("数据发送中...");
-               };
-                
-               ws.onmessage = function (evt) 
-               { 
-                  var received_msg = evt.data;
-                  alert("数据已接收...");
-               };
-                
-               ws.onclose = function()
-               { 
-                  // 关闭 websocket
-                  alert("连接已关闭..."); 
-               };
-            }
-            
-            else
-            {
-               // 浏览器不支持 WebSocket
-               alert("您的浏览器不支持 WebSocket!");
-            }
-         }
-      </script>
-        
-   </head>
-   <body>
-   
-      <div id="sse">
-         <a href="javascript:WebSocketTest()">运行 WebSocket</a>
-      </div>
-      
-   </body>
-</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Talk</title>
+    <script src="//cdn.bootcss.com/jquery/3.0.0-beta1/jquery.js"></script>
+    <script src="//cdn.bootcss.com/jquery-cookie/1.4.1/jquery.cookie.js"></script>
+</head>
+<body>
+  <div>
+    <div id="box" style="width:500px;height:300px;border:1px solid black;overflow:auto;"></div>
+    <textarea style="width:400px;heigt:100px;float:left;"></textarea>
+    <input type="button" style="padding:10px 32px;float:left;" value="发送" onclick="ws.send($(this).prev().val())" />
+  </div>
+</body>
+<script type="text/javascript">
 
+if ("WebSocket" in window) {
+
+  var ws = new WebSocket("ws://"+ document.domain +":8080");
+ 
+  ws.onopen = function(){
+    if(!$.cookie('uname')){
+      var uname = (uname = prompt('起个用户名?')) ? uname : '游客';
+      $.cookie('uname',uname);
+      ws.send(JSON.stringify({'action':'add','data':uname}));
+    }
+  };
+  ws.onclose = function() {
+      alert('服务器中断了连接.');
+  }
+  ws.onerror = function(evt, e) {
+    alert('错误:' + evt.data);
+  }
+  ws.onmessage = function (evt) {
+    $('#box').html($('#box').html()+evt.data+"<br>");
+  };
+  window.onbeforeunload = function(event) {
+    confirm("确定离开吗？");
+  }
+} else {
+    alert('您的浏览器不支持WebSocket!');
+}
+</script>
+</html>
