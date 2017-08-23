@@ -1,0 +1,3 @@
+LINE1
+WORD2
+AAAA
