@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<head>
+</head>
+<body>
+</body>
+<script>
+var ws = new WebSocket('ws://192.168.157.137:1234');
+ws.onopen = function(){
+    var uid = 'uid1';
+    ws.send(uid);
+};
+ws.onmessage = function(e){
+    alert(e.data);
+};
+</script>
+</html>

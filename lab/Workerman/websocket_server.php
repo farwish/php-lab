@@ -9,9 +9,7 @@ require __DIR__ . '/../../vendor/autoload.php';
 
 use Workerman\Worker;
 
-$ws_worker = new Worker("websocket://0.0.0.0:8080");
-
-// var_dump($ws_worker);die;
+$ws_worker = new Worker("websocket://0.0.0.0:8081");
 
 $ws_worker->count = 4;
 

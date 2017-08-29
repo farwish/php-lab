@@ -13,7 +13,10 @@
 // Socket context 选项
 $opts = [
     'socket' => [
-        'bindto' => '127.0.0.1:8080',
+        'bindto'  => '127.0.0.1:8080',
+        'backlog' => '10240' // `man listen`, 默认是 SOMAXCONN，为 128; 超过 /proc/sys/net/core/somaxconn 按此值
+        // 通过 /etc/sysctl.conf 加入 net.core.somaxconn = 10240 设置，sysctl -p 使生效
+        // 这里牵涉到了一些linux内核参数调优，这不可避免, 高性能需要各部分软件的一起提升。
     ],
 ];
 
@@ -22,6 +25,10 @@ $opts = [
 // 之后用 stream_context_set_option 依然能在此上下文上补充设置参数 
 $context = stream_context_create($opts);
 
+var_dump($context);
+
+
+//=====================================================
 
 // HTTP context 选项
 /*
