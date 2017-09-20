@@ -16,6 +16,8 @@ $worker = new Worker('text://127.0.0.1:8091');
 
 $worker->count = 4;
 
+$worker->reusePort = true;
+
 $worker->onWorkerStart = function($worker) {
     $time_interval = 2.5;
 
