@@ -13,6 +13,6 @@
     "require": {
         "sentry/sentry": "^1.6",
         "farwish/alcon": "dev-master",
-        "workerman/workerman": "~3.5.0"
+        "workerman/workerman": "dev-master"
     }
 }
