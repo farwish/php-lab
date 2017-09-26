@@ -5,3 +5,4 @@ tmp.log
 **dbunit.phar
 /vendor/
 composer.lock
+**.status
