@@ -11,6 +11,6 @@ echo '<pre>';
 
 print_r($_SERVER);
 
-echo \Alcon\Supports\Helper::full_server_name() . PHP_EOL;
+echo \Alcon\Supports\Helper::fullServerName() . PHP_EOL;
 
-echo \Alcon\Supports\Helper::full_url() . PHP_EOL;
+echo \Alcon\Supports\Helper::fullUrl() . PHP_EOL;
