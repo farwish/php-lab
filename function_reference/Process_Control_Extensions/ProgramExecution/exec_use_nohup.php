@@ -10,6 +10,10 @@
  * @farwish
  */
 
-$cmd = 'nohup php ./sleep.php > ./tmp.log 2>/dev/null &';
+$cmd = 'nohup php ./sleep.php > /tmp.log 2>/dev/null &';
 
-exec($cmd);
+exec($cmd, $output, $return_var);
+
+if ($return_var === 0) {
+    echo "命令执行成功\n";
+}
