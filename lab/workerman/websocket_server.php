@@ -18,7 +18,8 @@ $ws_worker->onConnect = function($connection) {
 };
 
 $ws_worker->onMessage = function($connection, $data) {
-    $connection->send($data);
+    echo $data . "\n";
+    $connection->send("Ws server say: " . $data);
 };
 
 $ws_worker->onClose = function($connection) {
