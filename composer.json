@@ -16,7 +16,9 @@
         "workerman/workerman": "3.5.4",
         "symfony/symfony": "3.3.13",
         "fabpot/goutte": "3.2.2",
-        "symfony/var-dumper": "v3.4.2"
+        "symfony/var-dumper": "v3.4.2",
+        "workerman/gateway-worker": "v3.0.7",
+        "doctrine/orm": "v2.6.0"
     },
     "repositories": [
         {
