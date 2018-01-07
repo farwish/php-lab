@@ -10,7 +10,7 @@ require __DIR__ . '/../../vendor/autoload.php';
 use Workerman\Worker;
 use Workerman\Lib\Timer;
 
-// 不监听任何 socket 地址 ( 不创建套接字上下文 ) 
+// 不监听任何 socket 地址 ( 不创建套接字上下文 )
 // Worker.php:1568
 $worker = new Worker('text://127.0.0.1:8091');
 
