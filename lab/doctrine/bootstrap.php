@@ -14,10 +14,13 @@ use Doctrine\ORM\Tools\Setup;
 use Doctrine\ORM\EntityManager;
 
 $paths = [ trim(shell_exec('pwd')) . '/entity' ];
-$isDevMode = false;
+$isDevMode = true;
 
 $dbParams = array(
     'driver'   => 'pdo_mysql',
+	'host'     => '127.0.0.1',
+	'port'     => 3306,
+	'charset'  => 'utf8mb4',
     'user'     => 'root',
     'password' => '123456',
     'dbname'   => 'alconseek',
@@ -25,4 +28,3 @@ $dbParams = array(
 
 $config = Setup::createAnnotationMetadataConfiguration($paths, $isDevMode);
 $entityManager = EntityManager::create($dbParams, $config);
-

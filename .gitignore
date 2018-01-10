@@ -1,9 +1,12 @@
 a.php
 b.php
 *.swp
-**.log
-**dbunit.phar
+*.log
+*.php~
+*dbunit.phar
 /vendor/
 composer.lock
-**.status
+*.status
+*.bak
 .idea/
+
