@@ -64,14 +64,16 @@ class Container
     protected $port = null;
 
     /**
-     * All worker instance.
+     * Current instance.
      *
-     * @var array $workers
+     * @var Object $instance
      */
-    protected $workers = [];
+    protected $instance = null;
 
     /**
      * Worker process id container.
+     *
+     * Format likes: [72507 => 72507, 72508 => 72508]]
      *
      * @var array $worker
      */
@@ -88,9 +90,7 @@ class Container
     {
         $this->localSocket = $socket ?: null;
 
-        $hash = spl_object_hash($this);
-        $this->workers[$hash] = $this;
-        $this->pids[$hash]    = [];
+        $this->instance    = $this;
     }
 
     /**
@@ -103,7 +103,7 @@ class Container
      */
     public function setCount(int $count)
     {
-        if ((int)$count >= 0) {
+        if ((int)$count > 0) {
             $this->count = $count;
         } else {
             throw new Exception('Error: Illegal worker number.' . EOL);
@@ -131,9 +131,11 @@ class Container
      */
     public function start()
     {
-        self::createServer();
+        //self::createServer();
 
         self::forkWorkers();
+
+        self::monitorWorkers();
     }
 
     /**
@@ -145,6 +147,7 @@ class Container
     protected function createServer()
     {
         if ($this->localSocket) {
+            // Unix domain ?
             $list = explode(':', $this->localSocket);
             $this->protocol = $list[0] ?? null;
             $this->address  = $list[1] ? ltrim($list[1], '\/\/') : null;
@@ -187,31 +190,52 @@ class Container
      */
     protected function forkWorkers()
     {
-        foreach ($this->workers as $hash => $worker) {
-            while ( count($this->pids[$hash]) < $this->count ) {
-                $pid = pcntl_fork();
+        for ($i = 0; $i < $this->count; $i++) {
+            $pid = pcntl_fork();
 
-                switch($pid) {
-                    case -1:
-                        throw new Exception("Fork failed." . EOL);
-                        break;
-                    case 0:
-                        // Child process, do business, can exit at last.
-                        echo "Child posix_getppid : " . posix_getppid() . EOL;
+            switch($pid) {
+                case -1:
+                    throw new Exception("Fork failed." . EOL);
+                    break;
+                case 0:
+                    // Child process, do business, can exit at last.
+                    //sleep(1); $rand = rand(2, 20);
+                    //echo "Child postix_getpid " . posix_getpid() . " will spend {$rand} seconds." . EOL;
+                    //sleep($rand);
 
-                        // Why will fork more and exit the first process ?
-                        while ( $conn = stream_socket_accept($this->socketStream, -1) ) {
-                            $str = fread($conn, 1024);
-                            fwrite($conn, 'Server say:' . date('Y-m-d H:i:s') . ' ' . $str . EOL);
-                        }
-                        break;
-                    default:
-                        // Master process, not do business, cant exit.
-                        $this->pids[$hash][] = $pid;
-                        break;
-                }
+                    //while ( $conn = stream_socket_accept($this->socketStream, -1) ) {
+                        //$str = fread($conn, 1024);
+                        //fwrite($conn, 'Server say:' . date('Y-m-d H:i:s') . ' ' . $str . EOL);
+                    //}
+
+
+                    die;
+                    break;
+                default:
+                    // Parent(master) process, not do business, cant exit.
+                    $this->pids[$pid] = $pid;
+                    break;
             }
         }
-        return;
+    }
+
+    /**
+     * Monitor child workers that terminated.
+     *
+     * Wait no hang.
+     *
+     * @return void
+     */
+    protected function monitorWorkers()
+    {
+        do {
+            foreach ($this->pids as $pid) {
+                $terminated_pid = pcntl_waitpid($pid, $status, WNOHANG);
+                if ($terminated_pid > 0) {
+                    unset($this->pids[$terminated_pid]);
+                    echo "Child {$terminated_pid} terminated." . EOL;
+                }
+            }
+        } while ( count($this->pids) > 0 );
     }
 }

@@ -14,7 +14,7 @@ $socket = 'tcp://0.0.0.0:8080';
 
 $con = new Container();
 
-$con->setCount(2);
+$con->setCount(4);
 $con->setSocket($socket);
 
 $con->start();
