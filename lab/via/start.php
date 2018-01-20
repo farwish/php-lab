@@ -16,6 +16,7 @@ $con = new Container();
 
 $con->setCount(4);
 $con->setSocket($socket);
+$con->setTitle('Via');
 
 $con->start();
 

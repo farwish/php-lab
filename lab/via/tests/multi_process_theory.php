@@ -62,6 +62,19 @@ do {
         if ($exited_child_pid > 0) {
             unset($pids[$exited_child_pid]);
             echo "Child {$pid} finish working exited." . PHP_EOL;
+
+            if (pcntl_wifexited($status)) {
+                echo "Normal exit.\n";
+            }
+
+            if (pcntl_wifsignaled($status)) {
+                echo "Signal kill. Signal number: " . pcntl_wtermsig($status) . PHP_EOL;
+            }
+
+            if (pcntl_wifstopped($status)) {
+                echo "stop by signal, Currently stopped. Signal number: " . pcntl_wstopsig($status) . PHP_EOL;
+            }
+
             $num++;
         }
     }
