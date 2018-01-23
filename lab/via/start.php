@@ -14,9 +14,8 @@ $socket = 'tcp://0.0.0.0:8080';
 
 $con = new Container();
 
-$con->setCount(4);
-$con->setSocket($socket);
-$con->setTitle('Via');
-
-$con->start();
+$con->setCount(4)
+    ->setSocket($socket)
+    ->setTitle('Via')
+    ->start();
 

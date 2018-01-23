@@ -76,12 +76,12 @@ class Container
      * @var array $signals
      */
     protected $signals = [
-        SIGINT,  // 2   interrupted by keyboard(ctrl+c).
-        SIGQUIT, // 3   quit by keyboard(ctrl+\).
-        SIGUSR1, // 10
-        SIGUSR2, // 12
-        SIGTERM, // 15  terminated by `kill 72507`, and SIGKILL and SIGSTOP can not be catch.
-        SIGCHLD, // 17  normal child exit.
+        SIGINT  => 'SIGINT',  // 2   interrupted by keyboard (ctrl+c).
+        SIGQUIT => 'SIGQUIT', // 3   quit by keyboard (ctrl+\).
+        SIGUSR1 => 'SIGUSR1', // 10
+        SIGUSR2 => 'SIGUSR2', // 12
+        SIGTERM => 'SIGTERM', // 15  terminated by `kill 72507`, and SIGKILL and SIGSTOP can not be catch.
+        SIGCHLD => 'SIGCHLD', // 17  normal child exit.
     ];
 
     /**
@@ -126,7 +126,7 @@ class Container
      *
      * @param int $count
      *
-     * @return void
+     * @return $this
      * @throws Exception
      */
     public function setCount(int $count)
@@ -136,6 +136,8 @@ class Container
         } else {
             throw new Exception('Error: Illegal worker process number.' . PHP_EOL);
         }
+
+        return $this;
     }
 
     /**
@@ -145,11 +147,13 @@ class Container
      *
      * @param string $socket
      *
-     * @return void
+     * @return $this
      */
     public function setSocket(string $socket = '')
     {
         $this->localSocket = $socket ?: null;
+
+        return $this;
     }
 
     /**
@@ -157,11 +161,13 @@ class Container
      *
      * @param string $title
      *
-     * @return void
+     * @return $this
      */
     public function setTitle(string $title)
     {
         if ($title) $this->title = $title;
+
+        return $this;
     }
 
     /**
@@ -259,10 +265,10 @@ class Container
     {
         declare(ticks = 1);
 
-        foreach ($this->signals as $signal) {
-            pcntl_signal($signal, function($signo, $siginfo) {
+        foreach ($this->signals as $signal => $name) {
+            pcntl_signal($signal, function($signo, $siginfo) use ($name) {
                 if (! $this->daemon) {
-                    echo "Pid " . posix_getpid() . " received signal number {$signo} " . PHP_EOL;
+                    echo "Pid " . posix_getpid() . " received signal number {$signo} ({$name})" . PHP_EOL;
                 }
 
                 switch ($signo) {
@@ -306,7 +312,7 @@ class Container
      */
     protected function installChildSignal()
     {
-        foreach ($this->signals as $signal) {
+        foreach ($this->signals as $signal => $name) {
             switch ($signal) {
                 case SIGTERM:
                     // If parent catch the signal, it will cause block.
@@ -403,10 +409,12 @@ class Container
                     $except = [];
                     $sec = 60;
 
-                    while (stream_select($read, $write, $except, $sec)) {
-                        while ( $connection = stream_socket_accept($this->socketStream, 30) ) {
+                    // Warning raised if the system call is interrupted by an incoming signal, timeout be zero and FALSE on error.
+                    while (@stream_select($read, $write, $except, $sec)) {
+                        if ( $connection = @stream_socket_accept($this->socketStream, 30) ) {
                             $str = fread($connection, 1024);
                             fwrite($connection, 'Server say:' . date('Y-m-d H:i:s') . ' ' . $str . PHP_EOL);
+                            fclose($connection);
                         }
                     }
 
@@ -469,7 +477,7 @@ class Container
         }
 
         if (pcntl_wifsignaled($status)) {
-            $message .= "Signal killed by signal number " . pcntl_wtermsig($status);
+            $message .= "Signal killed by signal number " . pcntl_wtermsig($status) . " (" . ($this->signals[ pcntl_wtermsig($status) ] ?? 'Unknow') . ")";
         }
 
         if (pcntl_wifstopped($status)) {
