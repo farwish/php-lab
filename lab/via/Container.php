@@ -41,20 +41,6 @@ class Container
     protected $address = null;
 
     /**
-     * Stream return by stream_socket_server.
-     *
-     * @var Resource $socketStream
-     */
-    protected $socketStream = null;
-
-    /**
-     * Socket accept timeout (seconds).
-     *
-     * @var float $timeout
-     */
-    protected $timeout = 60;
-
-    /**
      * Port of socket.
      *
      * @var int $port
@@ -69,20 +55,6 @@ class Container
      * @var array $pids
      */
     protected $pids = [];
-
-    /**
-     * Monitored signals.
-     *
-     * @var array $signals
-     */
-    protected $signals = [
-        SIGINT  => 'SIGINT',  // 2   interrupted by keyboard (ctrl+c).
-        SIGQUIT => 'SIGQUIT', // 3   quit by keyboard (ctrl+\).
-        SIGUSR1 => 'SIGUSR1', // 10
-        SIGUSR2 => 'SIGUSR2', // 12
-        SIGTERM => 'SIGTERM', // 15  terminated by `kill 72507`, and SIGKILL and SIGSTOP can not be catch.
-        SIGCHLD => 'SIGCHLD', // 17  normal child exit.
-    ];
 
     /**
      * Usable command.
@@ -103,11 +75,53 @@ class Container
     protected $daemon = true;
 
     /**
+     * Monitored signals.
+     *
+     * @var array $signals
+     */
+    protected $signals = [
+        SIGINT  => 'SIGINT',  // 2   interrupted by keyboard (ctrl+c).
+        SIGQUIT => 'SIGQUIT', // 3   quit by keyboard (ctrl+\).
+        SIGUSR1 => 'SIGUSR1', // 10
+        SIGUSR2 => 'SIGUSR2', // 12
+        SIGTERM => 'SIGTERM', // 15  terminated by `kill 72507`, and SIGKILL and SIGSTOP can not be catch.
+        SIGCHLD => 'SIGCHLD', // 17  normal child exit.
+    ];
+
+    /**
      * Process title.
      *
      * @var string $title
      */
     protected $title = 'Via process';
+
+    /**
+     * Max client number waited in socket queue.
+     *
+     * @var int $backlog
+     */
+    protected $backlog = 1000;
+
+    /**
+     * Stream return by stream_socket_server.
+     *
+     * @var Resource $socketStream
+     */
+    protected $socketStream = null;
+
+    /**
+     * Socket select timeout (seconds)
+     *
+     * @var float $selectTimeout
+     */
+    protected $selectTimeout = 60;
+
+    /**
+     * Socket accept timeout (seconds).
+     *
+     * @var float $acceptTimeout
+     */
+    protected $acceptTimeout = 60;
 
     /**
      * Constructor.
@@ -166,6 +180,48 @@ class Container
     public function setTitle(string $title)
     {
         if ($title) $this->title = $title;
+
+        return $this;
+    }
+
+    /**
+     * Set socket backlog number.
+     *
+     * @param int $backlog
+     *
+     * @return $this
+     */
+    public function setBacklog(int $backlog)
+    {
+        $this->backlog = $backlog;
+
+        return $this;
+    }
+
+    /**
+     * Set select timeout value.
+     *
+     * @param float $selectTimeout
+     *
+     * @return $this
+     */
+    public function setSelectTimeout($selectTimeout)
+    {
+        $this->selectTimeout = $selectTimeout;
+
+        return $this;
+    }
+
+    /**
+     * Set accept timeout value.
+     *
+     * @param float $acceptTimeout
+     *
+     * @return $this
+     */
+    public function setAcceptTimeout($acceptTimeout)
+    {
+        $this->acceptTimeout = $acceptTimeout;
 
         return $this;
     }
@@ -273,10 +329,6 @@ class Container
 
                 switch ($signo) {
                     case SIGINT:
-                        // Exit script normally.
-                        exit();
-                        break;
-
                     case SIGQUIT:
                         // Exit script normally.
                         exit();
@@ -352,7 +404,7 @@ class Container
             $options = [
                 'socket' => [
                     'bindto'        => $this->address . ':' . $this->port,
-                    'backlog'       => 1,
+                    'backlog'       => $this->backlog,
                     'so_reuseport'  => true,
                 ],
             ];
@@ -398,25 +450,40 @@ class Container
                     self::installChildSignal();
 
                     /*
+                    // For test purpose.
                     sleep(1); $rand = rand(2, 20);
-                    echo "New child process (pid=" . posix_getpid() . ") will spend {$rand} seconds doing work." . PHP_EOL;
+                    echo "New child Process (pid=" . posix_getpid() . ") will spend {$rand} seconds doing work." . PHP_EOL;
                     sleep($rand);
                     sleep(30);
                      */
 
-                    $read[] = $this->socketStream;
-                    $write = null;
-                    $except = [];
-                    $sec = 60;
+                    do {
+                        Begin:
 
-                    // Warning raised if the system call is interrupted by an incoming signal, timeout be zero and FALSE on error.
-                    while (@stream_select($read, $write, $except, $sec)) {
-                        if ( $connection = @stream_socket_accept($this->socketStream, 30) ) {
-                            $str = fread($connection, 1024);
-                            fwrite($connection, 'Server say:' . date('Y-m-d H:i:s') . ' ' . $str . PHP_EOL);
-                            fclose($connection);
+                        $read[] = $this->socketStream;
+                        $write[] = $this->socketStream;
+                        $except = [];
+
+                        // I/O multiplexing.
+                        // Warning raised if select system call is interrupted by an incoming signal, timeout
+                        // will be zero and FALSE on error.
+                        $value = @stream_select($read, $write, $except, $this->selectTimeout);
+
+                        if ($value) {
+                                if ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout)) {
+                                    // Loop prevent read once.
+                                    while ($message = fread($connection, 1024)) {
+                                        fwrite($connection, "Server say : $message");
+                                    }
+                                } else {
+                                    // Timeout.
+                                    continue;
+                                }
+                        } else {
+                            // Timeout or Error.
+                            continue;
                         }
-                    }
+                    } while (true);
 
                     exit();
                     break;
@@ -438,23 +505,22 @@ class Container
      */
     protected function monitor()
     {
-        do {
-            if ($terminated_pid = pcntl_waitpid(-1, $status, WNOHANG)) {
+        // Block master, use WNOHANG in loop will waste too much CPU.
+        while ($terminated_pid = pcntl_waitpid(-1, $status, 0)) {
 
-                if (! $this->daemon) {
-                    self::debugSignal($terminated_pid, $status);
-                }
-
-                unset($this->pids[$terminated_pid]);
-
-                // Fork again condition: normal exited or killed by SIGTERM.
-                if ( pcntl_wifexited($status) ||
-                    (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM]) )
-                ) {
-                    self::forks();
-                }
+            if (! $this->daemon) {
+                self::debugSignal($terminated_pid, $status);
             }
-        } while ( count($this->pids) > 0 );
+
+            unset($this->pids[$terminated_pid]);
+
+            // Fork again condition: normal exited or killed by SIGTERM.
+            if ( pcntl_wifexited($status) ||
+                (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM]) )
+            ) {
+                self::forks();
+            }
+        }
     }
 
     /**
