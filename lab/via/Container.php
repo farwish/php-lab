@@ -180,9 +180,9 @@ class Container
      *
      * @return $this
      */
-    public function setSocket(string $socket = '')
+    public function setSocket(string $socket)
     {
-        $this->localSocket = $socket ?: null;
+        $this->localSocket = $socket;
 
         return $this;
     }
@@ -542,8 +542,6 @@ class Container
 
     /**
      * Monitor any child process that terminated.
-     *
-     * Wait no hang.
      *
      * @return void
      */
