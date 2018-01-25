@@ -93,14 +93,14 @@ class Container
      *
      * @var string $title
      */
-    protected $title = 'Via process';
+    protected $title = 'Via';
 
     /**
      * Max client number waited in socket queue.
      *
      * @var int $backlog
      */
-    protected $backlog = 1000;
+    protected $backlog = 100;
 
     /**
      * Stream return by stream_socket_server.
@@ -114,7 +114,7 @@ class Container
      *
      * @var float $selectTimeout
      */
-    protected $selectTimeout = 60;
+    protected $selectTimeout = 30;
 
     /**
      * Socket accept timeout (seconds).
@@ -122,6 +122,20 @@ class Container
      * @var float $acceptTimeout
      */
     protected $acceptTimeout = 60;
+
+    /**
+     * Connection callback function.
+     *
+     * @var callable $onConnection
+     */
+    protected $onConnection = null;
+
+    /**
+     * Message callback function.
+     *
+     * @var callable $onMessage
+     */
+    protected $onMessage = null;
 
     /**
      * Constructor.
@@ -133,6 +147,9 @@ class Container
     public function __construct(string $socket = '')
     {
         $this->localSocket = $socket ?: null;
+
+        $this->onConnection = function() {};
+        $this->onMessage    = function() {};
     }
 
     /**
@@ -222,6 +239,30 @@ class Container
     public function setAcceptTimeout($acceptTimeout)
     {
         $this->acceptTimeout = $acceptTimeout;
+
+        return $this;
+    }
+
+    /**
+     * Set connection event callback task.
+     *
+     * @var callable $callback  the first param is $connection return by accept.
+     */
+    public function onConnection(callable $callback)
+    {
+        $this->onConnection = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Set message event callback task.
+     *
+     * @var callable $callback  the first param is $connection, second param is data.
+     */
+    public function onMessage(callable $callback)
+    {
+        $this->onMessage = $callback;
 
         return $this;
     }
@@ -458,11 +499,9 @@ class Container
                      */
 
                     do {
-                        Begin:
-
-                        $read[] = $this->socketStream;
+                        $read[]  = $this->socketStream;
                         $write[] = $this->socketStream;
-                        $except = [];
+                        $except  = [];
 
                         // I/O multiplexing.
                         // Warning raised if select system call is interrupted by an incoming signal, timeout
@@ -471,9 +510,14 @@ class Container
 
                         if ($value) {
                                 if ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout)) {
+
+                                    // Connect success, callback trigger.
+                                    call_user_func($this->onConnection, $connection);
+
                                     // Loop prevent read once.
                                     while ($message = fread($connection, 1024)) {
-                                        fwrite($connection, "Server say : $message");
+                                        // Receive message, callback trigger.
+                                        call_user_func_array($this->onMessage, [$connection, $message]);
                                     }
                                 } else {
                                     // Timeout.
