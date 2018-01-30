@@ -276,9 +276,9 @@ class Container
     {
         self::command();
 
-        self::createServer();
-
         self::installSignal();
+
+        self::createServer();
 
         self::forks();
 
@@ -360,7 +360,16 @@ class Container
      */
     protected function installSignal()
     {
-        declare(ticks = 1);
+        if (PHP_MAJOR_VERSION < 7) {
+            // Must PHP7.
+            throw new Exception("PHP major version must >= 7" . PHP_EOL);
+        } elseif (PHP_MINOR_VERSION >= 1) {
+            // Low overhead.
+            pcntl_async_signals(true);
+        } else {
+            // A lot of overhead.
+            declare(ticks = 1);
+        }
 
         foreach ($this->signals as $signal => $name) {
             pcntl_signal($signal, function($signo, $siginfo) use ($name) {
@@ -514,11 +523,8 @@ class Container
                                     // Connect success, callback trigger.
                                     call_user_func($this->onConnection, $connection);
 
-                                    // Loop prevent read once.
-                                    while ($message = fread($connection, 1024)) {
-                                        // Receive message, callback trigger.
-                                        call_user_func_array($this->onMessage, [$connection, $message]);
-                                    }
+                                    // Loop prevent read once in callback.
+                                    call_user_func_array($this->onMessage, [$connection]);
                                 } else {
                                     // Timeout.
                                     continue;
