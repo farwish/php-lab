@@ -42,6 +42,7 @@ $con
 		$buffer = '';
 
 		// Prove the buffer is not empty.
+		// loop recvfrom bug.
 		//while (! preg_match('/\r?\n\r?\n/', $buffer)) {
 			//$buffer .= fread($client, 1024);
 		//}
@@ -80,17 +81,16 @@ $con
 		 */
 
 
-		/* http
+		$body = 'AAAA';
 		$header = "HTTP/1.1 200 OK\r\n";
 		$header .= "Connection: close\r\n";
+		$header .= "Content-Length: " . strlen($body) . "\r\n";
 		$header .= "Content-Type: text/html; charset=utf-8\r\n";
 		$header .= "Server: via\r\n";
 		$header .= "X-Powered-By: PHP/8\r\n";
 		$header .= "\r\n";
-		$body = "AAAA";
 		fwrite($client, $header . $body);
 		fclose($client);
-		 */
     })
 
     // Start server.
