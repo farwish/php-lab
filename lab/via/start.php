@@ -42,19 +42,21 @@ $con
         $method             = '';
         $url                = '';
         $protocol_version   = '';
-        $request_body       = '';
         $request_header     = [];
-        $response_header    = [];
+        $request_body       = '';
         $end_of_header      = false;
 
-        // Can not stop !!!! body has no endup sign.
+        // Can not stop, will block at recvfrom.
         while ( ($buffer = fgets($client, 1024)) !== false ) {
             if ($end_of_header) {
                 // Body.
                 $request_body .= $buffer;
+                if (! isset($request_header['Content-Length']) || ($request_body == strlen($request_header['Content-Length'])) ) {
+
+                }
             } else {
+
                 if ($buffer == "\r\n") {
-                    // End of header.
                     $end_of_header = true;
                 } else {
                     // Header.
@@ -67,11 +69,22 @@ $con
                     } else {
                         // Request header.
                         list ($key, $value) = $array;
-                        $request_header[ rtrim($key, ':') ] = $value;
+                        $request_header[ rtrim($key, ':') ] = rtrim($value, "\r\n");
                     }
                 }
             }
         }
+
+        $response_header = '';
+        $response_body = 'AAAA';
+        $response_header .= "HTTP/1.1 200 OK\r\n";
+        foreach ($request_header as $k => $v) {
+            $response_header .= "{$k}: {$v}\r\n";
+        }
+        $response_header .= "\r\n";
+        fwrite($client, $response_header . $response_body);
+        fclose($client);
+
 
         // Prove the buffer is not empty.
         // loop recvfrom bug.

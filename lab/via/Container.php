@@ -140,6 +140,9 @@ class Container
     /**
      * Constructor.
      *
+     * Supported socket transports.
+     * @see http://php.net/manual/en/transports.php
+     *
      * @param string $socket
      *
      * @return void
@@ -450,7 +453,8 @@ class Container
             $this->port     = $list[2] ?? null;
 
             // Create a stream context.
-            // Options see php.net/manual/en/context.php
+            // Options see http://php.net/manual/en/context.socket.php
+            // Available socket options see http://php.net/manual/en/function.socket-get-option.php
             $options = [
                 'socket' => [
                     'bindto'        => $this->address . ':' . $this->port,
@@ -518,16 +522,13 @@ class Container
                         $value = @stream_select($read, $write, $except, $this->selectTimeout);
 
                         if ($value) {
-                                if ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout)) {
+                                while( false !== ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout)) ) {
 
                                     // Connect success, callback trigger.
                                     call_user_func($this->onConnection, $connection);
 
                                     // Loop prevent read once in callback.
                                     call_user_func_array($this->onMessage, [$connection]);
-                                } else {
-                                    // Timeout.
-                                    continue;
                                 }
                         } else {
                             // Timeout or Error.
