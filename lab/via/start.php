@@ -38,46 +38,78 @@ $con
     })
     // option, when client send message to server, callback trigger.if
     ->onMessage(function($client) {
-        $buffer             = '';
         $method             = '';
         $url                = '';
         $protocol_version   = '';
+
         $request_header     = [];
+        $content_type       = 'text/html; charset=utf-8';
+        $content_length     = 0;
         $request_body       = '';
         $end_of_header      = false;
 
-        // Can not stop, will block at recvfrom.
-        while ( ($buffer = fgets($client, 1024)) !== false ) {
-            if ($end_of_header) {
-                // Body.
-                $request_body .= $buffer;
-                if (! isset($request_header['Content-Length']) || ($request_body == strlen($request_header['Content-Length'])) ) {
+        $buffer = fread($client, 1024);
 
-                }
-            } else {
+        if (false !== $buffer) {
 
-                if ($buffer == "\r\n") {
-                    $end_of_header = true;
-                } else {
-                    // Header.
-                    $array = explode(' ', $buffer);
-                    if (count($array) > 2) {
-                        // Request line.
-                        $method           = $array[0];
-                        $url              = $array[1];
-                        $protocol_version = $array[2];
+            // Http request format check.
+            if (false !== strstr($buffer, "\r\n")) {
+                $list = explode("\r\n", $buffer);
+            }
+
+            if ($list) {
+                foreach ($list as $line) {
+                    if ($end_of_header) {
+                        if (strlen($line) === $content_length) {
+                            $request_body = $line;
+                        } else {
+                            throw new \Exception("Content-Length {$content_length} not match request body length " . strlen($line) . "\n");
+                        }
+                        break;
+                    }
+
+                    if ( empty($line) ) {
+                        $end_of_header = true;
                     } else {
-                        // Request header.
-                        list ($key, $value) = $array;
-                        $request_header[ rtrim($key, ':') ] = rtrim($value, "\r\n");
+                        // Header.
+                        //
+                        if (false === strstr($line, ': ')) {
+                            $array = explode(' ', $line);
+
+                            // Request line.
+                            if (count($array) === 3) {
+                                $method           = $array[0];
+                                $url              = $array[1];
+                                $protocol_version = $array[2];
+                            }
+                        } else {
+                            $array = explode(': ', $line);
+
+                            // Request header.
+                            list ($key, $value) = $array;
+                            $request_header[$key] = $value;
+
+                            if ( strtolower($key) === strtolower('Content-type') ) {
+                                $content_type = $value;
+                            }
+
+                            // Have request body.
+                            if ($key === 'Content-Length') {
+                                $content_length = $value;
+                            }
+                        }
                     }
                 }
             }
         }
 
-        $response_header = '';
-        $response_body = 'AAAA';
-        $response_header .= "HTTP/1.1 200 OK\r\n";
+        // No request body, show buffer from read.
+        $response_body = $request_body ?: $buffer;
+        $response_header = "HTTP/1.1 200 OK\r\n";
+        $response_header .= "Content-type: {$content_type}\r\n";
+        if (empty($content_length) && (strlen($response_body) > 0)) {
+            $response_header .= "Content-Length: " . strlen($response_body) . "\r\n";
+        }
         foreach ($request_header as $k => $v) {
             $response_header .= "{$k}: {$v}\r\n";
         }
@@ -85,13 +117,6 @@ $con
         fwrite($client, $response_header . $response_body);
         fclose($client);
 
-
-        // Prove the buffer is not empty.
-        // loop recvfrom bug.
-        //while (! preg_match('/\r?\n\r?\n/', $buffer)) {
-        //$buffer .= fread($client, 1024);
-
-        //}
 
         /* websocket request header
             GET / HTTP/1.1
