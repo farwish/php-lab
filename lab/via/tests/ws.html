@@ -5,10 +5,11 @@
         a ws page.
     </body>
     <script>
-//
-// @doc https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications
-// @author farwish
-//
+
+    //
+    // @doc https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications
+    // @author farwish.com
+    //
 
     try {
 
@@ -30,19 +31,21 @@
             }
             */
 
-            ws.send('hello server');
+            ws.send('hello world');
         };
 
         ws.onmessage = function(event) {
-            alert(event.data);
+            console.log(event.data);
         };
 
         ws.onclose = function() {
             console.log('server closed');
+            alert('server closed');
         };
 
         ws.onerror = function() {
             console.log('server error');
+            alert('server error');
         };
 
     } catch (e) {
