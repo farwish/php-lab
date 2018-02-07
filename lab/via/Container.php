@@ -521,8 +521,8 @@ class Container
                         // will be zero and FALSE on error.
                         $value = @stream_select($read, $write, $except, $this->selectTimeout);
 
-                        if ($value) {
-                                while( false !== ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout)) ) {
+                        if ($value > 0) {
+                                while( false !== ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout, $peername)) ) {
 
                                     // Connect success, callback trigger.
                                     call_user_func($this->onConnection, $connection);
@@ -530,10 +530,13 @@ class Container
                                     // Loop prevent read once in callback.
                                     call_user_func_array($this->onMessage, [$connection]);
                                 }
-                        } else {
-                            // Timeout or Error.
+                        } elseif ($value === 0) {
+                            // Timeout.
                             continue;
-                        }
+                        } elseif ($value === false) {
+                            // Error.
+                            continue;
+                        } else {}
                     } while (true);
 
                     exit();
