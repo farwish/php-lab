@@ -28,9 +28,9 @@ $con
     // option, default is 100
     ->setBacklog(100)
     // option, default is 30
-    ->setSelectTimeout(20)
+    ->setSelectTimeout(5)
     // option, default is 60
-    ->setAcceptTimeout(30)
+    ->setAcceptTimeout(10)
 
     // Event callback.
     //
@@ -121,7 +121,7 @@ $con
             }
         }
 
-//        print_r($response_header);
+//        print_r($request_header);
 
         if ( $buffer = fread($connection, 8192) ) {
 
@@ -162,16 +162,19 @@ $con
             }
 
             // errno=32 Broken pipe: http://www.php.net/manual/fr/function.fwrite.php#96951
+            // sleep 1 before fwrite.
             if (is_resource($connection) && feof($connection)) {
                 fclose($connection);
             } else {
+
+                // TODO: must sleep reason.
+                sleep(1);
 
                 // If client browser refresh, will cause SIGPIPE problem and strace will see infinite loop!
                 $length = @fwrite($connection, $ns, 8192);
 
                 if ((false !== $length) && ($length === strlen($ns))) {
-                    echo 111;
-                    sleep(2);
+                    echo 111 . ' ' . PHP_EOL;
                 }
             }
         }

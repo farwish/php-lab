@@ -144,8 +144,6 @@ class Container
      * @see http://php.net/manual/en/transports.php
      *
      * @param string $socket
-     *
-     * @return void
      */
     public function __construct(string $socket = '')
     {
@@ -249,7 +247,9 @@ class Container
     /**
      * Set connection event callback task.
      *
-     * @var callable $callback  the first param is $connection return by accept.
+     * @param callable $callback  the first param is $connection return by accept.
+     *
+     * @return $this
      */
     public function onConnection(callable $callback)
     {
@@ -261,7 +261,9 @@ class Container
     /**
      * Set message event callback task.
      *
-     * @var callable $callback  the first param is $connection, second param is data.
+     * @param callable $callback  the first param is $connection, second param is data.
+     *
+     * @return $this
      */
     public function onMessage(callable $callback)
     {
@@ -273,10 +275,12 @@ class Container
     /**
      * Start run.
      *
-     * @return void
+     * @throws Exception
      */
     public function start()
     {
+        self::strict();
+
         self::command();
 
         self::installSignal();
@@ -289,9 +293,26 @@ class Container
     }
 
     /**
+     * Use strict.
+     *
+     * @throws Exception
+     */
+    protected function strict()
+    {
+        if (PHP_MAJOR_VERSION < 7) {
+            // Must PHP7.
+            throw new Exception("PHP major version must >= 7" . PHP_EOL);
+        }
+
+        if (! function_exists('socket_import_stream')) {
+            // Must socket extension.
+            throw new Exception("Socket extension must be enabled at compile time by giving the '--enable-sockets' option to 'configure'" . PHP_EOL);
+        }
+    }
+
+    /**
      * Parse command and option.
      *
-     * @return void
      */
     protected function command()
     {
@@ -359,14 +380,11 @@ class Container
      * PCNTL signal constants:
      * @see http://php.net/manual/en/pcntl.constants.php
      *
-     * @return void
+     * @throws Exception
      */
     protected function installSignal()
     {
-        if (PHP_MAJOR_VERSION < 7) {
-            // Must PHP7.
-            throw new Exception("PHP major version must >= 7" . PHP_EOL);
-        } elseif (PHP_MINOR_VERSION >= 1) {
+        if (PHP_MINOR_VERSION >= 1) {
             // Low overhead.
             pcntl_async_signals(true);
         } else {
@@ -403,6 +421,10 @@ class Container
                         pcntl_signal(SIGCHLD, SIG_DFL);
                         break;
 
+                    case SIGPIPE:
+                        echo "Catch sigpipe." . PHP_EOL;
+                        break;
+
                     default:
                         break;
                 }
@@ -413,7 +435,6 @@ class Container
     /**
      * Install signal handler in child process.
      *
-     * @return void
      */
     protected function installChildSignal()
     {
@@ -429,6 +450,10 @@ class Container
                     pcntl_signal(SIGCHLD, SIG_DFL);
                     break;
 
+                case SIGPIPE:
+                    echo "Catch sigpipe." . PHP_EOL;
+                    break;
+
                 default:
                     break;
             }
@@ -439,8 +464,8 @@ class Container
      * Create socket server.
      *
      * Master create socket and listen, later on descriptor can be used in child.
+     * If reuse port, child can create server by itself.
      *
-     * @return void
      * @throws Exception
      */
     protected function createServer()
@@ -469,91 +494,130 @@ class Container
             $errno   = 0;
             $errstr  = '';
             $flags   = ($this->protocol === 'udp') ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-            $stream  = stream_socket_server($this->localSocket, $errno, $errstr, $flags, $context);
-            if (! $stream) {
+            $this->socketStream  = stream_socket_server($this->localSocket, $errno, $errstr, $flags, $context);
+            if (! $this->socketStream) {
                 throw new Exception("Create socket server fail, errno: {$errno}, errstr: {$errstr}" . PHP_EOL);
             }
-            $this->socketStream = $stream;
+
+            // More socket option, must install sockets extension.
+            $socket = socket_import_stream($this->socketStream);
+
+            if ($socket !== false && $socket !== null) {
+                // Predefined constants: http://php.net/manual/en/sockets.constants.php
+                // Level number see: http://php.net/manual/en/function.getprotobyname.php; Or `php -r "print_r(getprotobyname('tcp'));"`
+                // Option name see: http://php.net/manual/en/function.socket-get-option.php
+                socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
+                socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
+            }
 
             // Switch to non-blocking mode,
             // affacts calls like fgets and fread that read from the stream.
-            if (! stream_set_blocking($stream, false)) {
+            if (! stream_set_blocking($this->socketStream, false)) {
                 throw new Exception('Switch to non-blocking mode fail' . PHP_EOL);
             }
+
+            // Store current process his socket stream.
+            $this->read[]  = $this->socketStream;
+            $this->write[] = $this->socketStream;
+            $this->except  = [];
         }
     }
 
     /**
      * Fork workers until reach 'count' number.
      *
-     * @return void
      */
     protected function forks()
     {
+        // Parent(master) process, set title.
+        cli_set_process_title('Master process ' . $this->title);
+
         while ( count($this->pids) < $this->count ) {
-            $pid = pcntl_fork();
-
-            switch($pid) {
-                case -1:
-                    throw new Exception("Fork failed." . PHP_EOL);
-                    break;
-                case 0:
-                    // Child process, do business, can exit at last.
-                    cli_set_process_title($this->title);
-
-                    self::installChildSignal();
-
-                    /*
-                    // For test purpose.
-                    sleep(1); $rand = rand(2, 20);
-                    echo "New child Process (pid=" . posix_getpid() . ") will spend {$rand} seconds doing work." . PHP_EOL;
-                    sleep($rand);
-                    sleep(30);
-                     */
-
-                    do {
-                        $read[]  = $this->socketStream;
-                        $write[] = $this->socketStream;
-                        $except  = [];
-
-                        // I/O multiplexing.
-                        // Warning raised if select system call is interrupted by an incoming signal, timeout
-                        // will be zero and FALSE on error.
-                        $value = @stream_select($read, $write, $except, $this->selectTimeout);
-
-                        if ($value > 0) {
-                                while( false !== ($connection = @stream_socket_accept($this->socketStream, $this->acceptTimeout, $peername)) ) {
-
-                                    // Connect success, callback trigger.
-                                    call_user_func($this->onConnection, $connection);
-
-                                    // Loop prevent read once in callback.
-                                    call_user_func_array($this->onMessage, [$connection]);
-                                }
-                        } elseif ($value === 0) {
-                            // Timeout.
-                            continue;
-                        } elseif ($value === false) {
-                            // Error.
-                            continue;
-                        } else {}
-                    } while (true);
-
-                    exit();
-                    break;
-                default:
-                    // Parent(master) process, not do business, cant exit.
-                    cli_set_process_title('Master process ' . $this->title);
-                    $this->pids[$pid] = $pid;
-                    break;
-            }
+            self::forkOne();
         }
+    }
+
+    /**
+     * To set all descriptor passed into stream_select.
+     *
+     * So separate pcntl_fork and stream_select.
+     *
+     */
+    protected function forkOne()
+    {
+        $pid = pcntl_fork();
+
+        switch($pid) {
+            case -1:
+                throw new Exception("Fork failed." . PHP_EOL);
+                break;
+            case 0:
+                // Child process, do business, can exit at last.
+                cli_set_process_title($this->title);
+
+                self::installChildSignal();
+
+                self::poll();
+
+                exit();
+                break;
+            default:
+                // Parent(master) process, not do business, cant exit.
+                $this->pids[$pid] = $pid;
+                break;
+        }
+    }
+
+    /**
+     * Poll on all child process.
+     *
+     */
+    protected function poll()
+    {
+        // Store child socket stream.
+        $this->read[]  = $this->socketStream;
+        $this->write[] = $this->socketStream;
+        $this->except  = [];
+
+        do {
+            // Stream_select need variable reference, so reassignment.
+            $read = $this->read;
+            $write = $this->write;
+            $except = $this->except;
+
+            // I/O multiplexing.
+            // Warning raised if select system call is interrupted by an incoming signal,
+            // timeout will be zero and FALSE on error.
+            $value = @stream_select($read, $write, $except, $this->selectTimeout);
+
+            if ($value > 0) {
+
+                foreach ($this->read as $socketStream) {
+
+                    // TODO: Timout set to zero or not.
+                    // Client number greater than count will cause status pending, so just connect cant do anything!
+                    // Heartbeat mechanism, need timer.
+                    // Remote address is user ip:port.
+                    if (false !== ($connection = @stream_socket_accept($socketStream, 0, $remote_address))) {
+
+                        // Connect success, callback trigger.
+                        call_user_func($this->onConnection, $connection);
+
+                        // Loop prevent read once in callback.
+                        call_user_func_array($this->onMessage, [$connection]);
+                    }
+                }
+            } elseif ($value === 0 || $value === false) {
+                // Timeout or Error
+                continue;
+            } else {
+            }
+        } while (true);
     }
 
     /**
      * Monitor any child process that terminated.
      *
-     * @return void
      */
     protected function monitor()
     {
@@ -583,8 +647,6 @@ class Container
      * `kill -CONT 80382` continue a process stopped.
      *
      * @param int $status which reference changed by waitpid.
-     *
-     * @return void
      */
     protected function debugSignal($pid, $status)
     {
