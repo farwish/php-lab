@@ -109,11 +109,12 @@ $con
             }
 
             // Protocol handshake: https://en.wikipedia.org/wiki/WebSocket#Overview
-
+            // Do handshake.
             $response_header = "HTTP/1.1 101 Switching Protocols\r\n";
             $response_header .= "Upgrade: websocket\r\n";
             $response_header .= "Connection: Upgrade\r\n";
-            $response_header .= "Sec-WebSocket-Accept: " . base64_encode(sha1($request_header['Sec-WebSocket-Key'] . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)) . "\r\n";
+            $response_header .= "Sec-WebSocket-Accept: " .
+                                base64_encode(sha1($request_header['Sec-WebSocket-Key'] . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)) . "\r\n";
             $response_header .= "\r\n";
 
             if (false !== fwrite($connection, $response_header, strlen($response_header))) {

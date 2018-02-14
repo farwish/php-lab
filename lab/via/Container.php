@@ -306,7 +306,9 @@ class Container
 
         if (! function_exists('socket_import_stream')) {
             // Must socket extension.
-            throw new Exception("Socket extension must be enabled at compile time by giving the '--enable-sockets' option to 'configure'" . PHP_EOL);
+            throw new Exception(
+                "Socket extension must be enabled at compile time by giving the '--enable-sockets' option to 'configure'" . PHP_EOL
+            );
         }
     }
 
@@ -595,7 +597,7 @@ class Container
                 foreach ($this->read as $socketStream) {
 
                     // TODO: Timout set to zero or not.
-                    // Client number greater than count will cause status pending, so just connect cant do anything!
+                    // Client number greater than process count will cause status pending, so just connect cant do anything!
                     // Heartbeat mechanism, need timer.
                     // Remote address is user ip:port.
                     if (false !== ($connection = @stream_socket_accept($socketStream, 0, $remote_address))) {
