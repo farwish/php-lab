@@ -1,0 +1,29 @@
+{
+    "name": "via/via",
+    "description": "Multi-process and non-blocking I/O socket library.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "farwish",
+            "email": "farwish@foxmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Via\\": "./"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Via\\": "tests/"
+        }
+    },
+    "suggest": {
+        "php": "Suggest to install newest PHP for high performance."
+    }
+}

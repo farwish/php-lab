@@ -1,5 +1,10 @@
-# via package
+# Via
 
-Steps:
+Use:  
+See tests/
 
-Coding Standards Check : https://symfony.com/doc/current/contributing/code/standards.html
+Contribute:  
+Coding Standards: https://symfony.com/doc/current/contributing/code/standards.html
+
+Other source:  
+Composer doc: https://getcomposer.org/doc/

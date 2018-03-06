@@ -115,6 +115,8 @@ $con
             $response_header .= "Connection: Upgrade\r\n";
             $response_header .= "Sec-WebSocket-Accept: " .
                                 base64_encode(sha1($request_header['Sec-WebSocket-Key'] . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)) . "\r\n";
+            // TODO custom server and other appended header.
+            $response_header .= "Server: Via\r\n";
             $response_header .= "\r\n";
 
             if (false !== fwrite($connection, $response_header, strlen($response_header))) {
