@@ -41,7 +41,14 @@ $con
     // option, when client send message to server, callback trigger.if
     ->onMessage(function($connection) use ($has_hand_shake) {
 
+        $custom_response_header = [
+            'Server' => 'Via',
+        ];
+
         if (! $has_hand_shake) {
+
+            // Parse http header.
+            // www.cnblogs.com/farwish/p/8418969.html
 
             $method = '';
             $url = '';
@@ -55,42 +62,50 @@ $con
 
             $buffer = fread($connection, 8192);
 
+            print_r($buffer);
+
             if (false !== $buffer) {
 
+                // Http protocol: https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Overview
                 // Http request format check.
+
                 if (false !== strstr($buffer, "\r\n")) {
                     $list = explode("\r\n", $buffer);
                 }
 
                 if ($list) {
                     foreach ($list as $line) {
+
                         if ($end_of_header) {
+
+                            // Check body length is match Content-Length.
+
                             if (strlen($line) === $content_length) {
                                 $request_body = $line;
+                                break;
                             } else {
                                 throw new \Exception("Content-Length {$content_length} not match request body length " . strlen($line) . "\n");
                             }
-                            break;
                         }
 
-                        if (empty($line)) {
-                            $end_of_header = true;
-                        } else {
-                            // Header.
-                            //
+                        if (! empty($line)) {
+
                             if (false === strstr($line, ': ')) {
                                 $array = explode(' ', $line);
 
                                 // Request line.
+
                                 if (count($array) === 3) {
                                     $method = $array[0];
                                     $url = $array[1];
                                     $protocol_version = $array[2];
                                 }
                             } else {
-                                $array = explode(': ', $line);
 
                                 // Request header.
+
+                                $array = explode(': ', $line);
+
                                 list ($key, $value) = $array;
                                 $request_header[$key] = $value;
 
@@ -99,24 +114,31 @@ $con
                                 }
 
                                 // Have request body.
-                                if ($key === 'Content-Length') {
+
+                                if (strtolower($key) === strtolower('Content-Length')) {
                                     $content_length = $value;
                                 }
                             }
+                        } else {
+                            $end_of_header = true;
                         }
                     }
                 }
             }
 
-            // Protocol handshake: https://en.wikipedia.org/wiki/WebSocket#Overview
-            // Do handshake.
+            // Protocol handshake: https://en.wikipedia.org/wiki/WebSocket#Protocol_handshake
+            // RFC 6455: https://tools.ietf.org/html/rfc6455
+            // Do handshake, response.
             $response_header = "HTTP/1.1 101 Switching Protocols\r\n";
             $response_header .= "Upgrade: websocket\r\n";
             $response_header .= "Connection: Upgrade\r\n";
             $response_header .= "Sec-WebSocket-Accept: " .
                                 base64_encode(sha1($request_header['Sec-WebSocket-Key'] . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)) . "\r\n";
-            // TODO custom server and other appended header.
-            $response_header .= "Server: Via\r\n";
+            if ($custom_response_header) {
+                foreach ($custom_response_header as $k => $v) {
+                    $response_header .= "{$k}: {$v}\r\n";
+                }
+            }
             $response_header .= "\r\n";
 
             if (false !== fwrite($connection, $response_header, strlen($response_header))) {
@@ -124,9 +146,14 @@ $con
             }
         }
 
-//        print_r($request_header);
+        // Read client message from connection.
+        // Base Data Framing Protocol: https://tools.ietf.org/html/rfc6455#page-28
 
         if ( $buffer = fread($connection, 8192) ) {
+
+//            var_dump($buffer);
+
+            echo substr($buffer, 8, 1);
 
             $len = $masks = $data = $decoded = null;
             $len = ord($buffer[1]) & 127;
