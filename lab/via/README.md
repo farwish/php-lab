@@ -1,7 +1,7 @@
 # Via
 
 Use:  
-See tests/
+`php ws.php` to see commands.
 
 Contribute:  
 Coding Standards: https://symfony.com/doc/current/contributing/code/standards.html

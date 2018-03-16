@@ -31,25 +31,28 @@
             }
             */
 
-            ws.send('hello world');
+            ws.send('Hello 好码');
+
         };
 
         ws.onmessage = function(event) {
             console.log(event.data);
+
+            ws.send('EiEi吧');
         };
 
         ws.onclose = function() {
             console.log('server closed');
-            alert('server closed');
+            // alert('server closed');
         };
 
         ws.onerror = function() {
             console.log('server error');
-            alert('server error');
+            // alert('server error');
         };
 
     } catch (e) {
-        alert(e.message);
+        // alert(e.message);
     }
 
     </script>

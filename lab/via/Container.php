@@ -13,7 +13,9 @@ use Exception;
 class Container
 {
     /**
-     * Worker number.
+     * Child process number.
+     *
+     * Master has one child process by default.
      *
      * @var int $count
      */
@@ -48,7 +50,7 @@ class Container
     protected $port = null;
 
     /**
-     * Worker process id container.
+     * Child process id container.
      *
      * Format likes: [72507 => 72507, 72508 => 72508]]
      *
@@ -77,15 +79,19 @@ class Container
     /**
      * Monitored signals.
      *
+     * Tip: If processes stopped by SIGSTOP(ctrl+z), use `ps auxf | grep -v grep | grep Via | awk '{print $2}' | xargs kill -CONT`
+     * recover from `T` to `S`.
+     *
      * @var array $signals
      */
     protected $signals = [
         SIGINT  => 'SIGINT',  // 2   interrupted by keyboard (ctrl+c).
         SIGQUIT => 'SIGQUIT', // 3   quit by keyboard (ctrl+\).
-        SIGUSR1 => 'SIGUSR1', // 10
-        SIGUSR2 => 'SIGUSR2', // 12
-        SIGTERM => 'SIGTERM', // 15  terminated by `kill 72507`, and SIGKILL and SIGSTOP can not be catch.
-        SIGCHLD => 'SIGCHLD', // 17  normal child exit.
+        SIGUSR1 => 'SIGUSR1', // 10  custom
+        SIGUSR2 => 'SIGUSR2', // 12  custom
+        SIGPIPE => 'SIGPIPE', // 13  write to broken pipe emit it and process exit.
+        SIGTERM => 'SIGTERM', // 15  terminated by `kill pid`, note that SIGKILL(9) and SIGSTOP(19) cant be caught.
+        SIGCHLD => 'SIGCHLD', // 17  exited normal between one child.
     ];
 
     /**
@@ -154,19 +160,19 @@ class Container
     }
 
     /**
-     * Set worker number.
+     * Set child process number.
      *
      * @param int $count
      *
      * @return $this
      * @throws Exception
      */
-    public function setCount(int $count)
+    public function setCount(int $count) : Container
     {
         if ((int)$count > 0) {
             $this->count = $count;
         } else {
-            throw new Exception('Error: Illegal worker process number.' . PHP_EOL);
+            throw new Exception('Error: Illegal child process number.' . PHP_EOL);
         }
 
         return $this;
@@ -181,7 +187,7 @@ class Container
      *
      * @return $this
      */
-    public function setSocket(string $socket)
+    public function setSocket(string $socket): Container
     {
         $this->localSocket = $socket;
 
@@ -195,7 +201,7 @@ class Container
      *
      * @return $this
      */
-    public function setTitle(string $title)
+    public function setTitle(string $title): Container
     {
         if ($title) $this->title = $title;
 
@@ -209,7 +215,7 @@ class Container
      *
      * @return $this
      */
-    public function setBacklog(int $backlog)
+    public function setBacklog(int $backlog): Container
     {
         $this->backlog = $backlog;
 
@@ -219,11 +225,11 @@ class Container
     /**
      * Set select timeout value.
      *
-     * @param float $selectTimeout
+     * @param int $selectTimeout
      *
      * @return $this
      */
-    public function setSelectTimeout($selectTimeout)
+    public function setSelectTimeout(int $selectTimeout): Container
     {
         $this->selectTimeout = $selectTimeout;
 
@@ -233,11 +239,11 @@ class Container
     /**
      * Set accept timeout value.
      *
-     * @param float $acceptTimeout
+     * @param int $acceptTimeout
      *
      * @return $this
      */
-    public function setAcceptTimeout($acceptTimeout)
+    public function setAcceptTimeout(int $acceptTimeout): Container
     {
         $this->acceptTimeout = $acceptTimeout;
 
@@ -251,7 +257,7 @@ class Container
      *
      * @return $this
      */
-    public function onConnection(callable $callback)
+    public function onConnection(callable $callback): Container
     {
         $this->onConnection = $callback;
 
@@ -265,7 +271,7 @@ class Container
      *
      * @return $this
      */
-    public function onMessage(callable $callback)
+    public function onMessage(callable $callback): Container
     {
         $this->onMessage = $callback;
 
@@ -277,10 +283,8 @@ class Container
      *
      * @throws Exception
      */
-    public function start()
+    public function start(): void
     {
-        self::strict();
-
         self::command();
 
         self::installSignal();
@@ -297,7 +301,7 @@ class Container
      *
      * @throws Exception
      */
-    protected function strict()
+    protected function strict(): void
     {
         if (PHP_MAJOR_VERSION < 7) {
             // Must PHP7.
@@ -315,10 +319,13 @@ class Container
     /**
      * Parse command and option.
      *
+     * @throws Exception
      */
-    protected function command()
+    protected function command(): void
     {
         global $argv;
+
+        self::strict();
 
         $command = $argv[1] ?? null;
         $stash   = $argv;
@@ -327,19 +334,10 @@ class Container
         // Parse option.
         if ($stash) {
             foreach ($stash as $option) {
-                if (! strstr($option, '=')) goto Usage;
-                list($k, $v) = explode('=', $option);
-                switch ($k) {
-                    case '--env':
-                        if ($v === 'dev') {
-                            $this->daemon = false;
-                        } elseif (empty($v) || $v === 'prod') {
-                            $this->daemon = true;
-                        }
-                        break;
-                    default:
-                        break;
+                if ($option == '-dev') {
+                    $this->daemon = false;
                 }
+                // Others...
             }
         }
 
@@ -347,33 +345,38 @@ class Container
         if (in_array($command, $this->commands)) {
             switch ($command) {
                 case 'start':
+                    // Default.
                     break;
                 case 'restart':
+                    // Do some thing.
                     break;
                 case 'stop':
+                    // Do some thing.
                     // need master pid somewhere.
                     break;
                 default:
                     break;
             }
         } else {
-
-            Usage:
-
-            echo "Usage:\n    php $argv[0] {start|restart|stop} [Options]" . PHP_EOL;
+            echo PHP_EOL;
+            echo "Usage:" . PHP_EOL;
+            echo "    php {$argv[0]} {start|restart|stop} [Options]" . PHP_EOL;
+            echo "Command:" . PHP_EOL;
+            echo "    start         Start run server side process." . PHP_EOL;
+            echo "    restart       Restart run server side process." . PHP_EOL;
+            echo "    stop          Stop all running process start before." . PHP_EOL;
             echo "Options:" . PHP_EOL;
-            echo "    --env=dev       It runs in foreground, show debug message, helpful in developing." . PHP_EOL;
-            echo "    --env=prod      This is default choice that runs in daemon, for production environment." . PHP_EOL;
+            echo "    -dev          Run in foreground, show debug message, helpful in developing; without it will runs in daemon by default." . PHP_EOL;
             echo PHP_EOL;
             exit();
         }
     }
 
     /**
-     * Install signal handler in master process.
+     * Install signal handler for process.
      *
-     * Parent catch the signal, child will extends the signal handler.
-     * But it not meens child will receive the signal too, SIGTERM is
+     * Parent catch the signal, child will extends parent signal handler.
+     * But it not means child will receive the signal too, SIGTERM is
      * exception, if parent catch SIGTERM, child will not received, so this
      * signal should be reinstall in the child.
      *
@@ -384,7 +387,7 @@ class Container
      *
      * @throws Exception
      */
-    protected function installSignal()
+    protected function installSignal(): void
     {
         if (PHP_MINOR_VERSION >= 1) {
             // Low overhead.
@@ -394,72 +397,59 @@ class Container
             declare(ticks = 1);
         }
 
-        foreach ($this->signals as $signal => $name) {
-            pcntl_signal($signal, function($signo, $siginfo) use ($name) {
-                if (! $this->daemon) {
-                    echo "Pid " . posix_getpid() . " received signal number {$signo} ({$name})" . PHP_EOL;
-                }
-
-                switch ($signo) {
-                    case SIGINT:
-                    case SIGQUIT:
-                        // Exit script normally.
-                        exit();
-                        break;
-
-                    case SIGUSR1:
-                        break;
-
-                    case SIGUSR2:
-                        break;
-
-                    case SIGTERM:
-                        // If parent catch the signal, it will cause block.
-                        // So child need reinstall the handler.
-                        pcntl_signal(SIGTERM, SIG_DFL);
-                        break;
-
-                    case SIGCHLD:
-                        pcntl_signal(SIGCHLD, SIG_DFL);
-                        break;
-
-                    case SIGPIPE:
-                        echo "Catch sigpipe." . PHP_EOL;
-                        break;
-
-                    default:
-                        break;
-                }
-            });
+        // TODO: notice child to quit too when parent quited.
+        $return_value = true;
+        $method = __METHOD__;
+        foreach ($this->signals as $signo => $name) {
+            switch ($signo) {
+                case SIGINT:
+                case SIGQUIT:
+                case SIGTERM:
+                    $return_value = pcntl_signal($signo, SIG_DFL);
+                    break;
+            }
+            if (! $return_value) {
+                throw new Exception('Install signal failed.' . PHP_EOL);
+            }
         }
+        unset($return_value, $method);
     }
 
     /**
      * Install signal handler in child process.
      *
+     * @throws Exception
      */
-    protected function installChildSignal()
+    protected function installChildSignal(): void
     {
-        foreach ($this->signals as $signal => $name) {
-            switch ($signal) {
-                case SIGTERM:
-                    // If parent catch the signal, it will cause block.
-                    // So child need reinstall the handler.
-                    pcntl_signal(SIGTERM, SIG_DFL);
-                    break;
+        $return_value = true;
+        $method = __METHOD__;
+        foreach ($this->signals as $signo => $name) {
 
-                case SIGCHLD:
-                    pcntl_signal(SIGCHLD, SIG_DFL);
-                    break;
+            // Will extend parent handler first.
+            switch ($signo) {
+                    case SIGUSR1:
 
-                case SIGPIPE:
-                    echo "Catch sigpipe." . PHP_EOL;
-                    break;
+                        break;
+                    case SIGUSR2:
 
-                default:
-                    break;
+                        break;
+                    case SIGCHLD:
+                        // Now parent will know any child quit.
+                        $return_value = pcntl_signal($signo, SIG_DFL);
+                        break;
+                    case SIGPIPE:
+                        $return_value = pcntl_signal($signo, SIG_DFL);
+                        break;
+                    default:
+                        break;
+            }
+
+            if (! $return_value) {
+                throw new Exception('Install signal failed.' . PHP_EOL);
             }
         }
+        unset($return_value, $method);
     }
 
     /**
@@ -470,7 +460,7 @@ class Container
      *
      * @throws Exception
      */
-    protected function createServer()
+    protected function createServer(): void
     {
         if ($this->localSocket) {
             // Parse socket name, Unix domain ?
@@ -526,10 +516,11 @@ class Container
     }
 
     /**
-     * Fork workers until reach 'count' number.
+     * Fork child process until reach 'count' number.
      *
+     * @throws Exception
      */
-    protected function forks()
+    protected function forks(): void
     {
         // Parent(master) process, set title.
         cli_set_process_title('Master process ' . $this->title);
@@ -544,8 +535,9 @@ class Container
      *
      * So separate pcntl_fork and stream_select.
      *
+     * @throws Exception
      */
-    protected function forkOne()
+    protected function forkOne(): void
     {
         $pid = pcntl_fork();
 
@@ -574,7 +566,7 @@ class Container
      * Poll on all child process.
      *
      */
-    protected function poll()
+    protected function poll(): void
     {
         // Store child socket stream.
         $this->read[]  = $this->socketStream;
@@ -620,10 +612,13 @@ class Container
     /**
      * Monitor any child process that terminated.
      *
+     * If child exited or terminated, fork one.
+     *
+     * @throws Exception
      */
-    protected function monitor()
+    protected function monitor(): void
     {
-        // Block master, use WNOHANG in loop will waste too much CPU.
+        // Block on master, use WNOHANG in loop will waste too much CPU.
         while ($terminated_pid = pcntl_waitpid(-1, $status, 0)) {
 
             if (! $this->daemon) {
@@ -632,12 +627,12 @@ class Container
 
             unset($this->pids[$terminated_pid]);
 
+            self::forks();
+
             // Fork again condition: normal exited or killed by SIGTERM.
-            if ( pcntl_wifexited($status) ||
-                (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM]) )
-            ) {
-                self::forks();
-            }
+//            if ( pcntl_wifexited($status) || (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM])) ) {
+//                self::forks();
+//            }
         }
     }
 
@@ -645,25 +640,32 @@ class Container
      * Output info when child quit.
      *
      * `kill -TERM 80382` as kill 80382
-     * `kill -STOP 80382` stop a process to quit.
+     * `kill -STOP 80382` stop a process, use -CONT to recover.
      * `kill -CONT 80382` continue a process stopped.
      *
-     * @param int $status which reference changed by waitpid.
+     * @param $pid
+     * @param $status
      */
-    protected function debugSignal($pid, $status)
+    protected function debugSignal($pid, $status): void
     {
-        $message = "Child process {$pid} terminated, ";
+        $other_debug_signals = [
+            SIGKILL => 'SIGKILL',
+        ];
+
+        $message = "Process[{$pid}] quit, ";
 
         if (pcntl_wifexited($status)) {
-            $message .= "Normal exited with status " . pcntl_wexitstatus($status);
+            $message .= "Normal exited with status " . pcntl_wexitstatus($status) . ", line " . __LINE__;
         }
 
         if (pcntl_wifsignaled($status)) {
-            $message .= "Signal killed by signal number " . pcntl_wtermsig($status) . " (" . ($this->signals[ pcntl_wtermsig($status) ] ?? 'Unknow') . ")";
+            $message .= "by signal " .
+                ($this->signals[ pcntl_wtermsig($status) ] ?? ($other_debug_signals[pcntl_wtermsig($status)] ?? 'Unknow')) . "(" . pcntl_wtermsig($status) . "), line " . __LINE__;
         }
 
         if (pcntl_wifstopped($status)) {
-            $message .= "Signal stopped by signal number " . pcntl_wstopsig($status);
+            $message .= "by signal (" .
+                pcntl_wstopsig($status) . "), line " . __LINE__;
         }
 
         echo $message . PHP_EOL;
