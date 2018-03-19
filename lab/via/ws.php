@@ -20,11 +20,13 @@ $con
     // Parameter.
     //
     // option, default is 1
-    ->setCount(1)
+    ->setCount(2)
     // option, can also be in constructor
     ->setSocket($socket)
     // option, default is Via
-    ->setTitle('Via')
+    ->setProcessTitle('Via')
+    // option, default is /tmp
+    ->setPpidPath('/tmp')
     // option, default is 100
     ->setBacklog(100)
     // option, default is 30

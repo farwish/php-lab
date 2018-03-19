@@ -29,6 +29,13 @@ class Container
     protected $localSocket = null;
 
     /**
+     * Stream return by stream_socket_server.
+     *
+     * @var Resource $socketStream
+     */
+    protected $socketStream = null;
+
+    /**
      * Protocol of socket.
      *
      * @var string $protocol
@@ -50,56 +57,11 @@ class Container
     protected $port = null;
 
     /**
-     * Child process id container.
-     *
-     * Format likes: [72507 => 72507, 72508 => 72508]]
-     *
-     * @var array $pids
-     */
-    protected $pids = [];
-
-    /**
-     * Usable command.
-     *
-     * @var array $commands
-     */
-    protected $commands = [
-        'start',
-        'restart',
-        'stop',
-    ];
-
-    /**
-     * Is in daemon.
-     *
-     * @var bool $daemon
-     */
-    protected $daemon = true;
-
-    /**
-     * Monitored signals.
-     *
-     * Tip: If processes stopped by SIGSTOP(ctrl+z), use `ps auxf | grep -v grep | grep Via | awk '{print $2}' | xargs kill -CONT`
-     * recover from `T` to `S`.
-     *
-     * @var array $signals
-     */
-    protected $signals = [
-        SIGINT  => 'SIGINT',  // 2   interrupted by keyboard (ctrl+c).
-        SIGQUIT => 'SIGQUIT', // 3   quit by keyboard (ctrl+\).
-        SIGUSR1 => 'SIGUSR1', // 10  custom
-        SIGUSR2 => 'SIGUSR2', // 12  custom
-        SIGPIPE => 'SIGPIPE', // 13  write to broken pipe emit it and process exit.
-        SIGTERM => 'SIGTERM', // 15  terminated by `kill pid`, note that SIGKILL(9) and SIGSTOP(19) cant be caught.
-        SIGCHLD => 'SIGCHLD', // 17  exited normal between one child.
-    ];
-
-    /**
      * Process title.
      *
-     * @var string $title
+     * @var string $processTitle
      */
-    protected $title = 'Via';
+    protected $processTitle = 'Via';
 
     /**
      * Max client number waited in socket queue.
@@ -107,13 +69,6 @@ class Container
      * @var int $backlog
      */
     protected $backlog = 100;
-
-    /**
-     * Stream return by stream_socket_server.
-     *
-     * @var Resource $socketStream
-     */
-    protected $socketStream = null;
 
     /**
      * Socket select timeout (seconds)
@@ -142,6 +97,76 @@ class Container
      * @var callable $onMessage
      */
     protected $onMessage = null;
+
+    /**
+     * Usable command.
+     *
+     * @var array $commands
+     */
+    protected $commands = [
+        'start',
+        'restart',
+        'stop',
+    ];
+
+    /**
+     * Is in daemon.
+     *
+     * @var bool $daemon
+     */
+    protected $daemon = true;
+
+    /**
+     * The path of file saved ppid.
+     *
+     * @var string $ppidPath
+     */
+    protected $ppidPath = '/tmp';
+
+    /**
+     * Parent process id
+     *
+     * @var int $ppid
+     */
+    protected $ppid = null;
+
+    /**
+     * Child process id container.
+     *
+     * Format likes: [ 72506 => [ 72507 => 72507, 72508 => 72507 ] ]
+     *               [ ppid  => [  pid1 =>  pid1,  pid2 => pid2  ] ]
+     *
+     * @var array $pids
+     */
+    protected $pids = [];
+
+    /**
+     * Monitored signals.
+     *
+     * Tip: If processes stopped by SIGSTOP(ctrl+z), use `ps auxf | grep -v grep | grep Via | awk '{print $2}' | xargs kill -CONT`
+     * recover from `T` to `S`.
+     *
+     * @var array $signals
+     */
+    protected $signals = [
+        SIGINT  => 'SIGINT',  // 2   interrupted by keyboard (ctrl+c).
+        SIGQUIT => 'SIGQUIT', // 3   quit by keyboard (ctrl+\).
+        SIGUSR1 => 'SIGUSR1', // 10  custom
+        SIGUSR2 => 'SIGUSR2', // 12  custom
+        SIGPIPE => 'SIGPIPE', // 13  write to broken pipe emit it and process exit.
+        SIGTERM => 'SIGTERM', // 15  terminated by `kill pid`, note that SIGKILL(9) and SIGSTOP(19) cant be caught.
+        SIGCHLD => 'SIGCHLD', // 17  exited normal between one child.
+    ];
+
+    /**
+     * Server information.
+     *
+     * @var array
+     */
+    protected $serverInfo = [
+        'start_file'     => '',
+        'pid_file'       => '',
+    ];
 
     /**
      * Constructor.
@@ -201,9 +226,23 @@ class Container
      *
      * @return $this
      */
-    public function setTitle(string $title): Container
+    public function setProcessTitle(string $title): Container
     {
-        if ($title) $this->title = $title;
+        if ($title) $this->processTitle = $title;
+
+        return $this;
+    }
+
+    /**
+     * Set the path of file saved ppid.
+     *
+     * @param string $path
+     *
+     * @return Container
+     */
+    public function setPpidPath(string $path): Container
+    {
+        $this->ppidPath = $path;
 
         return $this;
     }
@@ -287,11 +326,11 @@ class Container
     {
         self::command();
 
-        self::installSignal();
+        self::initializeMaster();
 
         self::createServer();
 
-        self::forks();
+        self::forkAll();
 
         self::monitor();
     }
@@ -373,7 +412,7 @@ class Container
     }
 
     /**
-     * Install signal handler for process.
+     * Initialzie master process.
      *
      * Parent catch the signal, child will extends parent signal handler.
      * But it not means child will receive the signal too, SIGTERM is
@@ -387,7 +426,7 @@ class Container
      *
      * @throws Exception
      */
-    protected function installSignal(): void
+    protected function initializeMaster(): void
     {
         if (PHP_MINOR_VERSION >= 1) {
             // Low overhead.
@@ -397,59 +436,71 @@ class Container
             declare(ticks = 1);
         }
 
-        // TODO: notice child to quit too when parent quited.
-        $return_value = true;
-        $method = __METHOD__;
-        foreach ($this->signals as $signo => $name) {
-            switch ($signo) {
-                case SIGINT:
-                case SIGQUIT:
-                case SIGTERM:
-                    $return_value = pcntl_signal($signo, SIG_DFL);
-                    break;
-            }
-            if (! $return_value) {
-                throw new Exception('Install signal failed.' . PHP_EOL);
+        // Initialize process info.
+        $this->ppid = posix_getpid();
+        $this->pids[$this->ppid] = [];
+        $this->serverInfo['start_file'] = debug_backtrace()[1]['file'];
+        $this->serverInfo['pid_file'] = rtrim($this->ppidPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+                                        . str_replace([DIRECTORY_SEPARATOR, '.'], ['_', '_'], $this->serverInfo['start_file']) . '.pid';
+
+        cli_set_process_title("Master process {$this->processTitle}, start file {$this->serverInfo['start_file']}");
+
+        if (! file_exists($this->serverInfo['pid_file'])) {
+            touch($this->serverInfo['pid_file']);
+        } else {
+            $_ppid = (int)file_get_contents($this->serverInfo['pid_file']);
+            if ($_ppid && ! posix_getsid($_ppid)) {
+                // If valid.
+                throw new Exception("(Already running, start file {$this->serverInfo['start_file']})");
             }
         }
-        unset($return_value, $method);
+//        file_put_contents($this->serverInfo['pid_file'], $this->ppid);
+
+        // TODO: notice child to quit too when parent quited.
+        // TODO: when all child quit, delete pid file.
     }
 
     /**
      * Install signal handler in child process.
+     *
+     * If child process terminated, monitor will fork again.
+     *
+     * PCNTL signal constants:
+     * @see http://php.net/manual/en/pcntl.constants.php
      *
      * @throws Exception
      */
     protected function installChildSignal(): void
     {
         $return_value = true;
-        $method = __METHOD__;
         foreach ($this->signals as $signo => $name) {
-
             // Will extend parent handler first.
             switch ($signo) {
-                    case SIGUSR1:
+                case SIGUSR1:
 
-                        break;
-                    case SIGUSR2:
+                    break;
+                case SIGUSR2:
 
-                        break;
-                    case SIGCHLD:
-                        // Now parent will know any child quit.
-                        $return_value = pcntl_signal($signo, SIG_DFL);
-                        break;
-                    case SIGPIPE:
-                        $return_value = pcntl_signal($signo, SIG_DFL);
-                        break;
-                    default:
-                        break;
+                    break;
+                case SIGINT:
+                case SIGQUIT:
+                case SIGTERM:
+                case SIGCHLD:
+                case SIGPIPE:
+//                    $return_value = pcntl_signal($signo, function($signo, $siginfo) {
+//                        exit();
+//                    });
+                    $return_value = pcntl_signal($signo, SIG_DFL);
+                    break;
+                default:
+                    break;
             }
 
             if (! $return_value) {
                 throw new Exception('Install signal failed.' . PHP_EOL);
             }
         }
-        unset($return_value, $method);
+        unset($return_value);
     }
 
     /**
@@ -520,13 +571,10 @@ class Container
      *
      * @throws Exception
      */
-    protected function forks(): void
+    protected function forkAll(): void
     {
-        // Parent(master) process, set title.
-        cli_set_process_title('Master process ' . $this->title);
-
-        while ( count($this->pids) < $this->count ) {
-            self::forkOne();
+        while ( count($this->pids[$this->ppid]) < ($this->count) ) {
+            self::fork();
         }
     }
 
@@ -534,10 +582,11 @@ class Container
      * To set all descriptor passed into stream_select.
      *
      * So separate pcntl_fork and stream_select.
+     * Install signal in child.
      *
      * @throws Exception
      */
-    protected function forkOne(): void
+    protected function fork(): void
     {
         $pid = pcntl_fork();
 
@@ -547,7 +596,7 @@ class Container
                 break;
             case 0:
                 // Child process, do business, can exit at last.
-                cli_set_process_title($this->title);
+                cli_set_process_title("Child process {$this->processTitle}");
 
                 self::installChildSignal();
 
@@ -557,7 +606,7 @@ class Container
                 break;
             default:
                 // Parent(master) process, not do business, cant exit.
-                $this->pids[$pid] = $pid;
+                $this->pids[$this->ppid][$pid] = $pid;
                 break;
         }
     }
@@ -625,14 +674,39 @@ class Container
                 self::debugSignal($terminated_pid, $status);
             }
 
-            unset($this->pids[$terminated_pid]);
+            unset($this->pids[$this->ppid][$terminated_pid]);
 
-            self::forks();
+            self::forkAll();
 
             // Fork again condition: normal exited or killed by SIGTERM.
 //            if ( pcntl_wifexited($status) || (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM])) ) {
-//                self::forks();
+//                self::forkAll();
 //            }
+        }
+    }
+
+    /**
+     *
+     * @throws Exception
+     */
+    protected function checkMasterAlive()
+    {
+        $this->ppid = posix_getpid();
+        $this->pids[$this->ppid] = [];
+        $this->serverInfo['start_file'] = debug_backtrace()[1]['file'];
+        $this->serverInfo['pid_file'] = rtrim($this->ppidPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . str_replace([DIRECTORY_SEPARATOR, '.'], ['_', '_'], $this->serverInfo['start_file']) . '.pid';
+
+        cli_set_process_title("Master process {$this->processTitle}, start file {$this->serverInfo['start_file']}");
+
+        if (! file_exists($this->serverInfo['pid_file'])) {
+            touch($this->serverInfo['pid_file']);
+        } else {
+            $_ppid = (int)file_get_contents($this->serverInfo['pid_file']);
+            if ($_ppid && ! posix_getsid($_ppid)) {
+                // If valid.
+                throw new Exception("(Already running, start file {$this->serverInfo['start_file']})");
+            }
         }
     }
 
