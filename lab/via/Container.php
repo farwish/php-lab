@@ -324,15 +324,17 @@ class Container
      */
     public function start(): void
     {
-        self::command();
+        try {
+            self::command();
 
-        self::initializeMaster();
+            self::createServer();
 
-        self::createServer();
+            self::forkAll();
 
-        self::forkAll();
-
-        self::monitor();
+            self::monitor();
+        } catch (Exception $e) {
+            exit($e->getMessage() . PHP_EOL);
+        }
     }
 
     /**
@@ -385,13 +387,43 @@ class Container
             switch ($command) {
                 case 'start':
                     // Default.
+                    self::initializeMaster();
                     break;
                 case 'restart':
                     // Do some thing.
                     break;
                 case 'stop':
-                    // Do some thing.
-                    // need master pid somewhere.
+                    if (! self::isMasterAlive()) {
+                        throw new Exception("Server {$this->processTitle} not running.");
+                    }
+
+                    // TODO Another goodness way
+                    $cmd = "ps a | grep -v color | grep -v vim | grep {$this->processTitle} | awk '{print $1}'";
+                    exec($cmd, $output, $return_var);
+                    $child_stop_status = true;
+                    if ($return_var === 0) {
+                        if ($output && is_array($output)) {
+                            foreach ($output as $pid) {
+                                // Gid equals to master pid is valid.
+                                if ( ($pid != $this->ppid) && (posix_getpgid($pid) == $this->ppid) ) {
+                                    $child_stop_status = posix_kill($pid, SIGKILL);
+                                    if (! $child_stop_status) {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if ($child_stop_status && posix_kill($this->ppid, SIGKILL)) {
+                        @unlink($this->serverInfo['pid_file']);
+                        $message = "Stop success.";
+                    } else {
+                        $message = "Stop on failure.";
+                    }
+
+                    exit($message . PHP_EOL);
+
                     break;
                 default:
                     break;
@@ -412,7 +444,7 @@ class Container
     }
 
     /**
-     * Initialzie master process.
+     * Initialize master process.
      *
      * Parent catch the signal, child will extends parent signal handler.
      * But it not means child will receive the signal too, SIGTERM is
@@ -436,28 +468,49 @@ class Container
             declare(ticks = 1);
         }
 
-        // Initialize process info.
-        $this->ppid = posix_getpid();
-        $this->pids[$this->ppid] = [];
-        $this->serverInfo['start_file'] = debug_backtrace()[1]['file'];
-        $this->serverInfo['pid_file'] = rtrim($this->ppidPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
-                                        . str_replace([DIRECTORY_SEPARATOR, '.'], ['_', '_'], $this->serverInfo['start_file']) . '.pid';
-
-        cli_set_process_title("Master process {$this->processTitle}, start file {$this->serverInfo['start_file']}");
-
-        if (! file_exists($this->serverInfo['pid_file'])) {
-            touch($this->serverInfo['pid_file']);
+        if (self::isMasterAlive()) {
+            throw new Exception("Already running, master pid {$this->ppid}, start file ({$this->serverInfo['start_file']})");
         } else {
-            $_ppid = (int)file_get_contents($this->serverInfo['pid_file']);
-            if ($_ppid && ! posix_getsid($_ppid)) {
-                // If valid.
-                throw new Exception("(Already running, start file {$this->serverInfo['start_file']})");
+            $this->ppid = posix_getpid();
+            $this->pids[$this->ppid] = [];
+            if (! file_exists($this->serverInfo['pid_file'])) {
+                touch($this->serverInfo['pid_file']);
             }
+            file_put_contents($this->serverInfo['pid_file'], $this->ppid, LOCK_EX);
+            cli_set_process_title("{$this->processTitle} master process, start file ({$this->serverInfo['start_file']})");
+
+            // Install signal
         }
-//        file_put_contents($this->serverInfo['pid_file'], $this->ppid);
 
         // TODO: notice child to quit too when parent quited.
         // TODO: when all child quit, delete pid file.
+    }
+
+    /**
+     * Check if master pid alive.
+     *
+     * @return bool  true is alive
+     *
+     * @throws Exception
+     */
+    protected function isMasterAlive(): bool
+    {
+        $backtrace = debug_backtrace();
+
+        // Log some info.
+        $this->serverInfo['start_file'] = end($backtrace)['file'];
+        $this->serverInfo['pid_file'] = rtrim($this->ppidPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . str_replace([DIRECTORY_SEPARATOR, '.'], ['_', '_'], $this->serverInfo['start_file']) . '.pid';
+
+        if (file_exists($this->serverInfo['pid_file'])) {
+            // Ping.
+            $this->ppid = (int)file_get_contents($this->serverInfo['pid_file']);
+            if ($this->ppid && posix_kill($this->ppid, 0)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -596,7 +649,7 @@ class Container
                 break;
             case 0:
                 // Child process, do business, can exit at last.
-                cli_set_process_title("Child process {$this->processTitle}");
+                cli_set_process_title("{$this->processTitle} child process");
 
                 self::installChildSignal();
 
@@ -676,42 +729,15 @@ class Container
 
             unset($this->pids[$this->ppid][$terminated_pid]);
 
-            self::forkAll();
-
             // Fork again condition: normal exited or killed by SIGTERM.
-//            if ( pcntl_wifexited($status) || (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM])) ) {
-//                self::forkAll();
-//            }
-        }
-    }
-
-    /**
-     *
-     * @throws Exception
-     */
-    protected function checkMasterAlive()
-    {
-        $this->ppid = posix_getpid();
-        $this->pids[$this->ppid] = [];
-        $this->serverInfo['start_file'] = debug_backtrace()[1]['file'];
-        $this->serverInfo['pid_file'] = rtrim($this->ppidPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
-            . str_replace([DIRECTORY_SEPARATOR, '.'], ['_', '_'], $this->serverInfo['start_file']) . '.pid';
-
-        cli_set_process_title("Master process {$this->processTitle}, start file {$this->serverInfo['start_file']}");
-
-        if (! file_exists($this->serverInfo['pid_file'])) {
-            touch($this->serverInfo['pid_file']);
-        } else {
-            $_ppid = (int)file_get_contents($this->serverInfo['pid_file']);
-            if ($_ppid && ! posix_getsid($_ppid)) {
-                // If valid.
-                throw new Exception("(Already running, start file {$this->serverInfo['start_file']})");
+            if ( pcntl_wifexited($status) || (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM])) ) {
+                self::forkAll();
             }
         }
     }
 
     /**
-     * Output info when child quit.
+     * Output info when monitor child quit.
      *
      * `kill -TERM 80382` as kill 80382
      * `kill -STOP 80382` stop a process, use -CONT to recover.
