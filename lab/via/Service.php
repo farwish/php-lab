@@ -10,7 +10,7 @@ namespace Via;
 
 use Exception;
 
-class Container
+class Service
 {
     /**
      * Child process number.
@@ -192,7 +192,7 @@ class Container
      * @return $this
      * @throws Exception
      */
-    public function setCount(int $count) : Container
+    public function setCount(int $count) : Service
     {
         if ((int)$count > 0) {
             $this->count = $count;
@@ -212,7 +212,7 @@ class Container
      *
      * @return $this
      */
-    public function setSocket(string $socket): Container
+    public function setSocket(string $socket): Service
     {
         $this->localSocket = $socket;
 
@@ -226,7 +226,7 @@ class Container
      *
      * @return $this
      */
-    public function setProcessTitle(string $title): Container
+    public function setProcessTitle(string $title): Service
     {
         if ($title) $this->processTitle = $title;
 
@@ -238,9 +238,9 @@ class Container
      *
      * @param string $path
      *
-     * @return Container
+     * @return $this
      */
-    public function setPpidPath(string $path): Container
+    public function setPpidPath(string $path): Service
     {
         $this->ppidPath = $path;
 
@@ -254,7 +254,7 @@ class Container
      *
      * @return $this
      */
-    public function setBacklog(int $backlog): Container
+    public function setBacklog(int $backlog): Service
     {
         $this->backlog = $backlog;
 
@@ -268,7 +268,7 @@ class Container
      *
      * @return $this
      */
-    public function setSelectTimeout(int $selectTimeout): Container
+    public function setSelectTimeout(int $selectTimeout): Service
     {
         $this->selectTimeout = $selectTimeout;
 
@@ -282,7 +282,7 @@ class Container
      *
      * @return $this
      */
-    public function setAcceptTimeout(int $acceptTimeout): Container
+    public function setAcceptTimeout(int $acceptTimeout): Service
     {
         $this->acceptTimeout = $acceptTimeout;
 
@@ -296,7 +296,7 @@ class Container
      *
      * @return $this
      */
-    public function onConnection(callable $callback): Container
+    public function onConnection(callable $callback): Service
     {
         $this->onConnection = $callback;
 
@@ -310,7 +310,7 @@ class Container
      *
      * @return $this
      */
-    public function onMessage(callable $callback): Container
+    public function onMessage(callable $callback): Service
     {
         $this->onMessage = $callback;
 
@@ -318,23 +318,18 @@ class Container
     }
 
     /**
-     * Start run.
+     * Run entrance.
+     *
+     * Recommend to call in `try { } catch { }`
      *
      * @throws Exception
      */
-    public function start(): void
+    public function run(): void
     {
-        try {
-            self::command();
-
-            self::createServer();
-
-            self::forkAll();
-
-            self::monitor();
-        } catch (Exception $e) {
-            exit($e->getMessage() . PHP_EOL);
-        }
+        self::command();
+        self::createServer();
+        self::forkAll();
+        self::monitor();
     }
 
     /**
@@ -386,43 +381,33 @@ class Container
         if (in_array($command, $this->commands)) {
             switch ($command) {
                 case 'start':
+
                     // Default.
                     self::initializeMaster();
+
                     break;
                 case 'restart':
-                    // Do some thing.
+
+                    // Quit child.
+                    if (self::quitChild($command)) {
+
+                    }
+
                     break;
                 case 'stop':
-                    if (! self::isMasterAlive()) {
-                        throw new Exception("Server {$this->processTitle} not running.");
-                    }
 
-                    // TODO Another goodness way
-                    $cmd = "ps a | grep -v color | grep -v vim | grep {$this->processTitle} | awk '{print $1}'";
-                    exec($cmd, $output, $return_var);
-                    $child_stop_status = true;
-                    if ($return_var === 0) {
-                        if ($output && is_array($output)) {
-                            foreach ($output as $pid) {
-                                // Gid equals to master pid is valid.
-                                if ( ($pid != $this->ppid) && (posix_getpgid($pid) == $this->ppid) ) {
-                                    $child_stop_status = posix_kill($pid, SIGKILL);
-                                    if (! $child_stop_status) {
-                                        break;
-                                    }
-                                }
-                            }
+                    // Quit child.
+                    if (self::quitChild($command)) {
+                        // Quit master.
+                        if (posix_kill($this->ppid, SIGKILL)) {
+                            @unlink($this->serverInfo['pid_file']);
+                            $message = "Server {$this->processTitle} stop success.";
+                        } else {
+                            $message = "Master {$this->processTitle} process {$this->ppid} stop failure.";
                         }
-                    }
 
-                    if ($child_stop_status && posix_kill($this->ppid, SIGKILL)) {
-                        @unlink($this->serverInfo['pid_file']);
-                        $message = "Stop success.";
-                    } else {
-                        $message = "Stop on failure.";
+                        exit($message . PHP_EOL);
                     }
-
-                    exit($message . PHP_EOL);
 
                     break;
                 default:
@@ -514,6 +499,61 @@ class Container
     }
 
     /**
+     * Quit all child.
+     *
+     * @param string $command_type  example: kill, stop
+     *
+     * @return bool
+     *
+     * @throws Exception
+     */
+    protected function quitChild(string $command_type): bool
+    {
+        if (! self::isMasterAlive()) {
+            throw new Exception("Server {$this->processTitle} not running.");
+        }
+
+        // TODO: Another goodness way
+        // Find child process and quit.
+        $cmd = "ps a | grep -v color | grep -v vim | grep {$this->processTitle} | awk '{print $1}'";
+        exec($cmd, $output, $return_var);
+        if ($return_var === 0) {
+            if ($output && is_array($output)) {
+                foreach ($output as $pid) {
+                    // Gid equals to master pid is valid.
+                    if ( ($pid != $this->ppid) && (posix_getpgid($pid) == $this->ppid) ) {
+
+                        switch ($command_type) {
+                            case 'restart':
+
+                                // Normal quit.
+                                $child_stop_status = posix_kill($pid, SIGTERM);
+                                if (! $child_stop_status) {
+                                    throw new Exception("Child {$this->processTitle} process {$pid} stop failure.");
+                                }
+
+                                break;
+                            case 'stop':
+
+                                // Force quit.
+                                $child_stop_status = posix_kill($pid, SIGKILL);
+                                if (! $child_stop_status) {
+                                    throw new Exception("Child {$this->processTitle} process {$pid} stop failure.");
+                                }
+
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Install signal handler in child process.
      *
      * If child process terminated, monitor will fork again.
@@ -567,7 +607,8 @@ class Container
     protected function createServer(): void
     {
         if ($this->localSocket) {
-            // Parse socket name, Unix domain ?
+            // Parse socket name.
+            // TODO: Support Unix domain
             $list = explode(':', $this->localSocket);
             $this->protocol = $list[0] ?? null;
             $this->address  = $list[1] ? ltrim($list[1], '\/\/') : null;
@@ -576,6 +617,7 @@ class Container
             // Create a stream context.
             // Options see http://php.net/manual/en/context.socket.php
             // Available socket options see http://php.net/manual/en/function.socket-get-option.php
+            // `Stream` extension instead of `Socket` extension in order to support fread/fwrite on connection.
             $options = [
                 'socket' => [
                     'bindto'        => $this->address . ':' . $this->port,
@@ -626,7 +668,7 @@ class Container
      */
     protected function forkAll(): void
     {
-        while ( count($this->pids[$this->ppid]) < ($this->count) ) {
+        while ( empty($this->pids) || count($this->pids[$this->ppid]) < ($this->count) ) {
             self::fork();
         }
     }
@@ -770,4 +812,5 @@ class Container
 
         echo $message . PHP_EOL;
     }
+
 }

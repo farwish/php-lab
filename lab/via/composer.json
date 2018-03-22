@@ -1,6 +1,6 @@
 {
     "name": "via/via",
-    "description": "Multi-process and non-blocking I/O socket library.",
+    "description": "PHP multi-process and non-blocking I/O socket library.",
     "type": "library",
     "license": "Apache-2.0",
     "authors": [

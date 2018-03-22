@@ -6,17 +6,15 @@
  * @author farwish <farwish@foxmail.com>
  */
 
-include 'Container.php';
-
-use Via\Container;
+include 'Service.php';
 
 $socket = 'tcp://0.0.0.0:8080';
 
-$con = new Container();
+$server = new \Via\Service();
 
 $has_hand_shake = false;
 
-$con
+$server
     // Parameter.
     //
     // option, default is 1
@@ -220,7 +218,7 @@ $con
 
     })
 
-    // Start server.
+    // Run server.
     //
-    ->start();
+    ->run();
 
