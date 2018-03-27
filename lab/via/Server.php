@@ -2,16 +2,27 @@
 /**
  * Via package.
  *
- * @license Apache-2.0
+ * @license MIT
  * @author farwish <farwish@foxmail.com>
  */
 
 namespace Via;
 
 use Exception;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class Service
+/**
+ * Class Server
+ *
+ * @package Via
+ */
+class Server
 {
+    const VERSION = '0.0.1';
+
     /**
      * Child process number.
      *
@@ -114,7 +125,7 @@ class Service
      *
      * @var bool $daemon
      */
-    protected $daemon = true;
+    protected $daemon = false;
 
     /**
      * The path of file saved ppid.
@@ -192,7 +203,7 @@ class Service
      * @return $this
      * @throws Exception
      */
-    public function setCount(int $count) : Service
+    public function setCount(int $count)
     {
         if ((int)$count > 0) {
             $this->count = $count;
@@ -212,7 +223,7 @@ class Service
      *
      * @return $this
      */
-    public function setSocket(string $socket): Service
+    public function setSocket(string $socket)
     {
         $this->localSocket = $socket;
 
@@ -226,7 +237,7 @@ class Service
      *
      * @return $this
      */
-    public function setProcessTitle(string $title): Service
+    public function setProcessTitle(string $title)
     {
         if ($title) $this->processTitle = $title;
 
@@ -240,7 +251,7 @@ class Service
      *
      * @return $this
      */
-    public function setPpidPath(string $path): Service
+    public function setPpidPath(string $path)
     {
         $this->ppidPath = $path;
 
@@ -254,7 +265,7 @@ class Service
      *
      * @return $this
      */
-    public function setBacklog(int $backlog): Service
+    public function setBacklog(int $backlog)
     {
         $this->backlog = $backlog;
 
@@ -268,7 +279,7 @@ class Service
      *
      * @return $this
      */
-    public function setSelectTimeout(int $selectTimeout): Service
+    public function setSelectTimeout(int $selectTimeout)
     {
         $this->selectTimeout = $selectTimeout;
 
@@ -282,7 +293,7 @@ class Service
      *
      * @return $this
      */
-    public function setAcceptTimeout(int $acceptTimeout): Service
+    public function setAcceptTimeout(int $acceptTimeout)
     {
         $this->acceptTimeout = $acceptTimeout;
 
@@ -296,7 +307,7 @@ class Service
      *
      * @return $this
      */
-    public function onConnection(callable $callback): Service
+    public function onConnection(callable $callback)
     {
         $this->onConnection = $callback;
 
@@ -310,7 +321,7 @@ class Service
      *
      * @return $this
      */
-    public function onMessage(callable $callback): Service
+    public function onMessage(callable $callback)
     {
         $this->onMessage = $callback;
 
@@ -318,18 +329,78 @@ class Service
     }
 
     /**
-     * Run entrance.
+     * Parse command and option.
      *
-     * Recommend to call in `try { } catch { }`
+     * <code>
+     *   (new \Via\Server('tcp://0.0.0.0:8080'))->run();
+     * </code>
+     *
+     * @doc http://symfony.com/doc/current/components/console/single_command_tool.html
+     * @doc http://symfony.com/doc/current/components/console/console_arguments.html
      *
      * @throws Exception
      */
     public function run(): void
     {
-        self::command();
-        self::createServer();
-        self::forkAll();
-        self::monitor();
+        self::strict();
+
+        // Combine with symfony console.
+        $app = new Application('Via package', self::VERSION);
+        foreach ($this->commands as $cmd) {
+            $app->register($cmd)
+                ->setDescription(ucfirst("{$cmd} Via server"))
+                ->addOption('env', 'e', InputOption::VALUE_REQUIRED, 'The Environment name (support: dev, prod)', 'dev')
+                ->setCode(function (InputInterface $input, OutputInterface $output) use ($cmd) {
+                    if ($input->getOption('env') === 'prod') {
+                        $output->writeln('<info>In production mode.</info>');
+                        $this->daemon = true;
+                    } else {
+                        $output->writeln('<info>In development mode.</info>');
+                    }
+
+                    switch ($cmd) {
+                        case 'start':
+
+                            // Default.
+                            self::initializeMaster();
+                            self::createServer();
+                            self::forks();
+                            self::monitor();
+
+                            break;
+                        case 'restart':
+
+                            // Quit child.
+                            self::quitChild($cmd);
+
+                            $message = "Server {$this->processTitle} {$cmd} success.";
+
+                            exit($message . PHP_EOL);
+
+                            break;
+                        case 'stop':
+
+                            // Quit child.
+                            if (self::quitChild($cmd)) {
+                                // Quit master.
+                                if (posix_kill($this->ppid, SIGKILL)) {
+                                    @unlink($this->serverInfo['pid_file']);
+                                    $message = "Server {$this->processTitle} {$cmd} success.";
+                                } else {
+                                    $message = "Master {$this->processTitle} process {$this->ppid} stop failure.";
+                                }
+
+                                exit($message . PHP_EOL);
+                            }
+
+                            break;
+                        default:
+                            break;
+                    }
+                });
+        }
+
+        $app->run();
     }
 
     /**
@@ -349,82 +420,6 @@ class Service
             throw new Exception(
                 "Socket extension must be enabled at compile time by giving the '--enable-sockets' option to 'configure'" . PHP_EOL
             );
-        }
-    }
-
-    /**
-     * Parse command and option.
-     *
-     * @throws Exception
-     */
-    protected function command(): void
-    {
-        global $argv;
-
-        self::strict();
-
-        $command = $argv[1] ?? null;
-        $stash   = $argv;
-        unset($stash[0], $stash[1]);
-
-        // Parse option.
-        if ($stash) {
-            foreach ($stash as $option) {
-                if ($option == '-dev') {
-                    $this->daemon = false;
-                }
-                // Others...
-            }
-        }
-
-        // Parse command.
-        if (in_array($command, $this->commands)) {
-            switch ($command) {
-                case 'start':
-
-                    // Default.
-                    self::initializeMaster();
-
-                    break;
-                case 'restart':
-
-                    // Quit child.
-                    if (self::quitChild($command)) {
-
-                    }
-
-                    break;
-                case 'stop':
-
-                    // Quit child.
-                    if (self::quitChild($command)) {
-                        // Quit master.
-                        if (posix_kill($this->ppid, SIGKILL)) {
-                            @unlink($this->serverInfo['pid_file']);
-                            $message = "Server {$this->processTitle} stop success.";
-                        } else {
-                            $message = "Master {$this->processTitle} process {$this->ppid} stop failure.";
-                        }
-
-                        exit($message . PHP_EOL);
-                    }
-
-                    break;
-                default:
-                    break;
-            }
-        } else {
-            echo PHP_EOL;
-            echo "Usage:" . PHP_EOL;
-            echo "    php {$argv[0]} {start|restart|stop} [Options]" . PHP_EOL;
-            echo "Command:" . PHP_EOL;
-            echo "    start         Start run server side process." . PHP_EOL;
-            echo "    restart       Restart run server side process." . PHP_EOL;
-            echo "    stop          Stop all running process start before." . PHP_EOL;
-            echo "Options:" . PHP_EOL;
-            echo "    -dev          Run in foreground, show debug message, helpful in developing; without it will runs in daemon by default." . PHP_EOL;
-            echo PHP_EOL;
-            exit();
         }
     }
 
@@ -499,58 +494,137 @@ class Service
     }
 
     /**
-     * Quit all child.
+     * Create socket server.
      *
-     * @param string $command_type  example: kill, stop
-     *
-     * @return bool
+     * Master create socket and listen, later on descriptor can be used in child.
+     * If reuse port, child can create server by itself.
      *
      * @throws Exception
      */
-    protected function quitChild(string $command_type): bool
+    protected function createServer(): void
     {
-        if (! self::isMasterAlive()) {
-            throw new Exception("Server {$this->processTitle} not running.");
-        }
+        if ($this->localSocket) {
+            // Parse socket name.
+            // TODO: Support Unix domain
+            $list = explode(':', $this->localSocket);
+            $this->protocol = $list[0] ?? null;
+            $this->address  = $list[1] ? ltrim($list[1], '\/\/') : null;
+            $this->port     = $list[2] ?? null;
 
-        // TODO: Another goodness way
-        // Find child process and quit.
-        $cmd = "ps a | grep -v color | grep -v vim | grep {$this->processTitle} | awk '{print $1}'";
-        exec($cmd, $output, $return_var);
-        if ($return_var === 0) {
-            if ($output && is_array($output)) {
-                foreach ($output as $pid) {
-                    // Gid equals to master pid is valid.
-                    if ( ($pid != $this->ppid) && (posix_getpgid($pid) == $this->ppid) ) {
+            // Create a stream context.
+            // Options see http://php.net/manual/en/context.socket.php
+            // Available socket options see http://php.net/manual/en/function.socket-get-option.php
+            // `Stream` extension instead of `Socket` extension in order to support fread/fwrite on connection.
+            $options = [
+                'socket' => [
+                    'bindto'        => $this->address . ':' . $this->port,
+                    'backlog'       => $this->backlog,
+                    'so_reuseport'  => true,
+                ],
+            ];
+            $params  = null;
+            $context = stream_context_create($options, $params);
 
-                        switch ($command_type) {
-                            case 'restart':
-
-                                // Normal quit.
-                                $child_stop_status = posix_kill($pid, SIGTERM);
-                                if (! $child_stop_status) {
-                                    throw new Exception("Child {$this->processTitle} process {$pid} stop failure.");
-                                }
-
-                                break;
-                            case 'stop':
-
-                                // Force quit.
-                                $child_stop_status = posix_kill($pid, SIGKILL);
-                                if (! $child_stop_status) {
-                                    throw new Exception("Child {$this->processTitle} process {$pid} stop failure.");
-                                }
-
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                }
+            // Create an Internet or Unix domain server socket.
+            $errno   = 0;
+            $errstr  = '';
+            $flags   = ($this->protocol === 'udp') ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+            $this->socketStream  = stream_socket_server($this->localSocket, $errno, $errstr, $flags, $context);
+            if (! $this->socketStream) {
+                throw new Exception("Create socket server fail, errno: {$errno}, errstr: {$errstr}");
             }
-        }
 
-        return true;
+            // More socket option, must install sockets extension.
+            $socket = socket_import_stream($this->socketStream);
+
+            if ($socket !== false && $socket !== null) {
+                // Predefined constants: http://php.net/manual/en/sockets.constants.php
+                // Level number see: http://php.net/manual/en/function.getprotobyname.php; Or `php -r "print_r(getprotobyname('tcp'));"`
+                // Option name see: http://php.net/manual/en/function.socket-get-option.php
+                socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
+                socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
+            }
+
+            // Switch to non-blocking mode,
+            // affacts calls like fgets and fread that read from the stream.
+            if (! stream_set_blocking($this->socketStream, false)) {
+                throw new Exception('Switch to non-blocking mode fail');
+            }
+
+            // Store current process his socket stream.
+            $this->read[]  = $this->socketStream;
+            $this->write[] = $this->socketStream;
+            $this->except  = [];
+        }
+    }
+
+    /**
+     * Monitor any child process that terminated.
+     *
+     * If child exited or terminated, fork one.
+     *
+     * @throws Exception
+     */
+    protected function monitor(): void
+    {
+        // Block on master, use WNOHANG in loop will waste too much CPU.
+        while ($terminated_pid = pcntl_waitpid(-1, $status, 0)) {
+
+            if (! $this->daemon) {
+                self::debugSignal($terminated_pid, $status);
+            }
+
+            unset($this->pids[$this->ppid][$terminated_pid]);
+
+            // Fork again condition: normal exited or killed by SIGTERM.
+            // if ( pcntl_wifexited($status) || (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM])) ) {
+            self::forks();
+            // }
+        }
+    }
+
+    /**
+     * Fork child process until reach 'count' number.
+     *
+     * Child install signal and poll on descriptor.
+     *
+     * @throws Exception
+     */
+    protected function forks(): void
+    {
+        while ( empty($this->pids) || count($this->pids[$this->ppid]) < ($this->count) ) {
+            self::fork();
+        }
+    }
+
+    /**
+     * Fork a process, install signal, and poll.
+     *
+     * @throws Exception
+     */
+    protected function fork(): void
+    {
+        $pid = pcntl_fork();
+
+        switch($pid) {
+            case -1:
+                throw new Exception('Fork failed.');
+                break;
+            case 0:
+                // Child process, do business, can exit at last.
+                cli_set_process_title("{$this->processTitle} child process");
+
+                self::installChildSignal();
+
+                self::poll();
+
+                exit();
+                break;
+            default:
+                // Parent(master) process, not do business, cant exit.
+                $this->pids[$this->ppid][$pid] = $pid;
+                break;
+        }
     }
 
     /**
@@ -590,120 +664,10 @@ class Service
             }
 
             if (! $return_value) {
-                throw new Exception('Install signal failed.' . PHP_EOL);
+                throw new Exception('Install signal failed.');
             }
         }
         unset($return_value);
-    }
-
-    /**
-     * Create socket server.
-     *
-     * Master create socket and listen, later on descriptor can be used in child.
-     * If reuse port, child can create server by itself.
-     *
-     * @throws Exception
-     */
-    protected function createServer(): void
-    {
-        if ($this->localSocket) {
-            // Parse socket name.
-            // TODO: Support Unix domain
-            $list = explode(':', $this->localSocket);
-            $this->protocol = $list[0] ?? null;
-            $this->address  = $list[1] ? ltrim($list[1], '\/\/') : null;
-            $this->port     = $list[2] ?? null;
-
-            // Create a stream context.
-            // Options see http://php.net/manual/en/context.socket.php
-            // Available socket options see http://php.net/manual/en/function.socket-get-option.php
-            // `Stream` extension instead of `Socket` extension in order to support fread/fwrite on connection.
-            $options = [
-                'socket' => [
-                    'bindto'        => $this->address . ':' . $this->port,
-                    'backlog'       => $this->backlog,
-                    'so_reuseport'  => true,
-                ],
-            ];
-            $params  = null;
-            $context = stream_context_create($options, $params);
-
-            // Create an Internet or Unix domain server socket.
-            $errno   = 0;
-            $errstr  = '';
-            $flags   = ($this->protocol === 'udp') ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-            $this->socketStream  = stream_socket_server($this->localSocket, $errno, $errstr, $flags, $context);
-            if (! $this->socketStream) {
-                throw new Exception("Create socket server fail, errno: {$errno}, errstr: {$errstr}" . PHP_EOL);
-            }
-
-            // More socket option, must install sockets extension.
-            $socket = socket_import_stream($this->socketStream);
-
-            if ($socket !== false && $socket !== null) {
-                // Predefined constants: http://php.net/manual/en/sockets.constants.php
-                // Level number see: http://php.net/manual/en/function.getprotobyname.php; Or `php -r "print_r(getprotobyname('tcp'));"`
-                // Option name see: http://php.net/manual/en/function.socket-get-option.php
-                socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
-                socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
-            }
-
-            // Switch to non-blocking mode,
-            // affacts calls like fgets and fread that read from the stream.
-            if (! stream_set_blocking($this->socketStream, false)) {
-                throw new Exception('Switch to non-blocking mode fail' . PHP_EOL);
-            }
-
-            // Store current process his socket stream.
-            $this->read[]  = $this->socketStream;
-            $this->write[] = $this->socketStream;
-            $this->except  = [];
-        }
-    }
-
-    /**
-     * Fork child process until reach 'count' number.
-     *
-     * @throws Exception
-     */
-    protected function forkAll(): void
-    {
-        while ( empty($this->pids) || count($this->pids[$this->ppid]) < ($this->count) ) {
-            self::fork();
-        }
-    }
-
-    /**
-     * To set all descriptor passed into stream_select.
-     *
-     * So separate pcntl_fork and stream_select.
-     * Install signal in child.
-     *
-     * @throws Exception
-     */
-    protected function fork(): void
-    {
-        $pid = pcntl_fork();
-
-        switch($pid) {
-            case -1:
-                throw new Exception("Fork failed." . PHP_EOL);
-                break;
-            case 0:
-                // Child process, do business, can exit at last.
-                cli_set_process_title("{$this->processTitle} child process");
-
-                self::installChildSignal();
-
-                self::poll();
-
-                exit();
-                break;
-            default:
-                // Parent(master) process, not do business, cant exit.
-                $this->pids[$this->ppid][$pid] = $pid;
-                break;
-        }
     }
 
     /**
@@ -754,28 +718,59 @@ class Service
     }
 
     /**
-     * Monitor any child process that terminated.
+     * Quit all child.
      *
-     * If child exited or terminated, fork one.
+     * @param string $command_type  example: kill, stop
+     *
+     * @return bool
      *
      * @throws Exception
      */
-    protected function monitor(): void
+    protected function quitChild(string $command_type): bool
     {
-        // Block on master, use WNOHANG in loop will waste too much CPU.
-        while ($terminated_pid = pcntl_waitpid(-1, $status, 0)) {
+        if (! self::isMasterAlive()) {
+            throw new Exception("Server {$this->processTitle} not running.");
+        }
 
-            if (! $this->daemon) {
-                self::debugSignal($terminated_pid, $status);
-            }
+        // TODO: Another goodness way
+        // Find child process and quit.
+        $cmd = "ps a | grep -v color | grep -v vim | grep {$this->processTitle} | awk '{print $1}'";
+        exec($cmd, $output, $return_var);
+        if ($return_var === 0) {
+            if ($output && is_array($output)) {
+                foreach ($output as $pid) {
+                    // Gid equals to master pid is valid.
+                    if ( ($pid != $this->ppid) && (posix_getpgid($pid) == $this->ppid) ) {
 
-            unset($this->pids[$this->ppid][$terminated_pid]);
+                        switch ($command_type) {
+                            case 'restart':
 
-            // Fork again condition: normal exited or killed by SIGTERM.
-            if ( pcntl_wifexited($status) || (pcntl_wifsignaled($status) && in_array(pcntl_wtermsig($status), [SIGTERM])) ) {
-                self::forkAll();
+                                // Normal quit.
+                                $child_stop_status = posix_kill($pid, SIGTERM);
+                                if (! $child_stop_status) {
+                                    throw new Exception("Child {$this->processTitle} process {$pid} stop failure.");
+                                }
+
+                                break;
+                            case 'stop':
+
+                                // Force quit.
+                                // SIGKILL cant be catch, so process will not restart.
+                                $child_stop_status = posix_kill($pid, SIGKILL);
+                                if (! $child_stop_status) {
+                                    throw new Exception("Child {$this->processTitle} process {$pid} stop failure.");
+                                }
+
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
             }
         }
+
+        return true;
     }
 
     /**

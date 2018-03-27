@@ -4,7 +4,7 @@
  *
  * @see https://github.com/farwish/alcon/blob/master/src/Supports/Helper.php#L477
  *
- * @license Apache-2.0
+ * @license MIT
  * @author farwish <farwish@foxmail.com>
  */
 

@@ -36,9 +36,11 @@
         };
 
         ws.onmessage = function(event) {
-            console.log(event.data);
+            console.log("Receive from server: " + event.data);
 
-            ws.send('EiEi吧');
+            setInterval(function () {
+                ws.send('EiEi吧' + new Date());
+            }, 2000)
         };
 
         ws.onclose = function() {

@@ -2,17 +2,16 @@
 /**
  * Via package.
  *
- * @license Apache-2.0
+ * @license MIT
  * @author farwish <farwish@foxmail.com>
  */
 
-include 'Container.php';
-
-use Via\Container;
+include __DIR__ . '/../../../vendor/autoload.php';
+include __DIR__ . '/../Server.php';
 
 $socket = 'tcp://0.0.0.0:8080';
 
-$con = new Container();
+$con = new \Via\Server();
 
 $con
     // Parameter.
@@ -22,7 +21,7 @@ $con
     // option, can also be in constructor
     ->setSocket($socket)
     // option, default is Via
-    ->setTitle('Via')
+    ->setProcessTitle('Via')
     // option, default is 100
     ->setBacklog(100)
     // option, default is 30
@@ -121,5 +120,5 @@ $con
 
     // Start server.
     //
-    ->start();
+    ->run();
 

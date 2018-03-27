@@ -14,16 +14,21 @@
         "sentry/sentry": "1.8.1",
         "farwish/alcon": "dev-master",
         "workerman/workerman": "3.5.4",
-        "symfony/symfony": "3.3.13",
+        "symfony/symfony": "~4.0",
         "fabpot/goutte": "3.2.2",
         "symfony/var-dumper": "v3.4.2",
         "workerman/gateway-worker": "v3.0.7",
-        "doctrine/orm": "v2.6.0"
+        "doctrine/orm": "v2.6.0",
+        "symfony/console": "~4.0.6",
+        "symfony/event-dispatcher": "~4.0.6"
     },
     "repositories": [
         {
             "type": "composer",
             "url": "https://packagist.phpcomposer.com"
         }
-    ]
+    ],
+    "require-dev": {
+        "phpunit/phpunit": "~7.0.3"
+    }
 }

@@ -4,7 +4,7 @@
  *
  * Access http://127.0.0.1:8081
  *
- * @license Apache-2.0
+ * @license MIT
  * @author farwish <farwish@foxmail.com>
  */
 
