@@ -30,7 +30,9 @@
             }
             */
 
-            ws.send('hello server');
+            setInterval(function () {
+                ws.send('hello server');
+            }, 3000);
         };
 
         ws.onmessage = function(event) {

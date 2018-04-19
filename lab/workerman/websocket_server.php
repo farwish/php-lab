@@ -19,12 +19,15 @@ $ws_worker->onConnect = function($connection) {
 };
 
 $ws_worker->onMessage = function($connection, $data) {
-    print_r($connection);
-    echo $data . "\n";
-    while (1) {
-        sleep(1);
-        $connection->send("Ws server say: " . rand());
-    }
+//    TcpConnection
+//    print_r($connection);
+
+    echo $data . PHP_EOL;
+
+//    while (1)
+//        sleep(1);
+//        $connection->send("Ws server say: " . rand());
+//    }
 };
 
 $ws_worker->onClose = function($connection) {
