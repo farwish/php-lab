@@ -23,6 +23,7 @@ $worker->onWorkerStart = function($worker) {
 
     Timer::add($time_interval, function() {
         echo "task run\n";
+        exit;
     }, [], false);
 };
 
