@@ -12,16 +12,22 @@
     "minimum-stability": "dev",
     "require": {
         "sentry/sentry": "1.8.1",
-        "farwish/alcon": "dev-master",
+        "farwish/alcon": "4.1.x-dev",
         "workerman/workerman": "3.5.4",
-        "symfony/symfony": "~4.0",
         "fabpot/goutte": "3.2.2",
         "symfony/var-dumper": "v3.4.2",
         "workerman/gateway-worker": "v3.0.7",
         "doctrine/orm": "v2.6.0",
         "symfony/console": "~4.0.6",
         "symfony/event-dispatcher": "~4.0.6",
-        "phpvia/via": "dev-master"
+        "symfony/lts": "4.x-dev",
+        "phvia/via": "0.0.x-dev"
+    },
+    "config": {
+        "preferred-install": {
+            "*": "dist"
+        },
+        "sort-packages": true
     },
     "repositories": [
         {
